@@ -126,6 +126,7 @@ struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
     m_block_addr = 0;
+    hashPC = 0 ; // cwpeng initialize hashed PC
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -167,6 +168,8 @@ struct cache_block_t {
 
   new_addr_type m_tag;
   new_addr_type m_block_addr;
+
+  uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
 };
 
 struct line_cache_block : public cache_block_t {
@@ -1706,13 +1709,19 @@ class l1_cache : public data_cache {
            enum mem_fetch_status status, class gpgpu_sim *gpu,
            enum cache_gpu_level level)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {}
+                   L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {
+                    for(int i=0 ; i<128 ; i++){
+                      prediction_table[i] = 8 ; // cwpeng initialize prediction table in constructor
+                    }
+                   }
 
   virtual ~l1_cache() {}
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+
+  uint8_t prediction_table[128] ; // cwpeng prediction table in L1 cache (4 bits each entry)
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
