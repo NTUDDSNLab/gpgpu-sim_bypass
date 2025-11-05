@@ -1729,7 +1729,11 @@ class l1_cache : public data_cache {
            enum mem_fetch_status status, tag_array *new_tag_array,
            class gpgpu_sim *gpu)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {}
+                   new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {
+                    for(int i=0 ; i<128 ; i++){
+                      prediction_table[i] = 8 ; // cwpeng initialize prediction table in constructor
+                    }
+                   }
 };
 
 /// Models second level shared cache with global write-back
