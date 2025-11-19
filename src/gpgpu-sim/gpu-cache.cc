@@ -333,6 +333,20 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
 }
 
 /// cwpeng
+uint8_t tag_array::get_hashed_pc_from_tag(new_addr_type addr, mem_fetch *mf){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      return line->m_hashed_pc;
+    }
+  }
+}
+
 void tag_array::set_hashed_pc_from_tag(new_addr_type addr, mem_fetch *mf, uint8_t hashed_pc){
   unsigned set_index = m_config.set_index(addr);
   new_addr_type tag = m_config.tag(addr);
