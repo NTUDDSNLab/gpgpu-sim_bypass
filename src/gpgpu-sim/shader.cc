@@ -2127,7 +2127,7 @@ void ldst_unit::L1_latency_queue_cycle() {
           m_L1D->access(mf_next->get_addr(), mf_next,
                         m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle,
-                        events);
+                        events, m_L1D->prediction_table);
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);

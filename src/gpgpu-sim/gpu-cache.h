@@ -126,7 +126,7 @@ struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
     m_block_addr = 0;
-    hashPC = 0 ; // cwpeng initialize hashed PC
+    m_hashed_pc = 0 ; // cwpeng initialize hashed PC
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -169,7 +169,9 @@ struct cache_block_t {
   new_addr_type m_tag;
   new_addr_type m_block_addr;
 
-  uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
+  // uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
+  uint8_t m_hashed_pc; // cwpeng hashed PC in memory block (7 bits)
+  bool m_bypassBit; // rajesh cs752 L2 Bypass Bit
 };
 
 struct line_cache_block : public cache_block_t {
@@ -182,6 +184,9 @@ struct line_cache_block : public cache_block_t {
     m_set_modified_on_fill = false;
     m_set_readable_on_fill = false;
     m_readable = true;
+
+    m_hashed_pc = 0 ;  // cwpeng initialize hashed PC
+                  // record the last PC that access this block
   }
   void allocate(new_addr_type tag, new_addr_type block_addr, unsigned time,
                 mem_access_sector_mask_t sector_mask) {
@@ -988,6 +993,11 @@ class tag_array {
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
 
+  uint8_t get_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf);
+  void set_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf, uint8_t hashed_pc);
+  void set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit);
+  bool get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf);
+
  protected:
   // This constructor is intended for use only from derived classes that wish to
   // avoid unnecessary memory allocation that takes place in the
@@ -1531,6 +1541,7 @@ class data_cache : public baseline_cache {
 
     // Set read hit function
     m_rd_hit = &data_cache::rd_hit_base;
+    m_rd_hit_l1d = &data_cache::rd_hit_base_l1d;
 
     // Set read miss function
     m_rd_miss = &data_cache::rd_miss_base;
@@ -1582,6 +1593,12 @@ class data_cache : public baseline_cache {
                                            unsigned time,
                                            std::list<cache_event> &events);
 
+  virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
+                                           unsigned time,
+                                           std::list<cache_event> &events,
+                                           uint8_t* l1_prediction_table // cwpeng
+                                           );
+
  protected:
   data_cache(const char *name, cache_config &config, int core_id, int type_id,
              mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
@@ -1611,6 +1628,15 @@ class data_cache : public baseline_cache {
                                               unsigned cache_index,
                                               mem_fetch *mf, unsigned time,
                                               std::list<cache_event> &events);
+
+  enum cache_request_status process_tag_probe(bool wr,
+                                              enum cache_request_status status,
+                                              new_addr_type addr,
+                                              unsigned cache_index,
+                                              mem_fetch *mf, unsigned time,
+                                              std::list<cache_event> &events,
+                                              uint8_t* l1_prediction_table // cwpeng
+                                              );
 
  protected:
   mem_fetch_allocator *m_memfetch_creator;
@@ -1681,11 +1707,22 @@ class data_cache : public baseline_cache {
   enum cache_request_status (data_cache::*m_rd_hit)(
       new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
+  enum cache_request_status (data_cache::*m_rd_hit_l1d)( //cwpeng
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
+      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table);
   enum cache_request_status rd_hit_base(new_addr_type addr,
                                         unsigned cache_index, mem_fetch *mf,
                                         unsigned time,
                                         std::list<cache_event> &events,
                                         enum cache_request_status status);
+
+  enum cache_request_status rd_hit_base_l1d(new_addr_type addr,
+                                        unsigned cache_index, mem_fetch *mf,
+                                        unsigned time,
+                                        std::list<cache_event> &events,
+                                        enum cache_request_status status,
+                                        uint8_t* l1_prediction_table // cwpeng
+                                        );
 
   /******* Read-miss configs *******/
   enum cache_request_status (data_cache::*m_rd_miss)(
@@ -1719,7 +1756,14 @@ class l1_cache : public data_cache {
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
-                                           std::list<cache_event> &events);
+                                           std::list<cache_event> &events
+                                           );
+
+  virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
+                                           unsigned time,
+                                           std::list<cache_event> &events,
+                                           uint8_t* l1_prediction_table // cwpeng
+                                           );
 
   uint8_t prediction_table[128] ; // cwpeng prediction table in L1 cache (4 bits each entry)
 

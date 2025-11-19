@@ -332,6 +332,51 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   return MISS;
 }
 
+/// cwpeng
+void tag_array::set_hashed_pc_from_tag(new_addr_type addr, mem_fetch *mf, uint8_t hashed_pc){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache and update on HIT access with most recent PC. Rajesh CS752
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      line->m_hashed_pc = hashed_pc;
+    }
+  }
+}
+
+void tag_array::set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache and update on HIT access with most recent PC. Rajesh CS752
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      line->m_bypassBit = bypassBit;
+    }
+  }
+}
+
+bool tag_array::get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache and update on HIT access with most recent PC. Rajesh CS752
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      return line->m_bypassBit;
+    }
+  }
+}
+
+//cwpeng
+
 enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
                                             unsigned &idx, mem_fetch *mf) {
   bool wb = false;
@@ -1836,6 +1881,38 @@ enum cache_request_status data_cache::rd_hit_base(
   return HIT;
 }
 
+//cwpeng
+enum cache_request_status data_cache::rd_hit_base_l1d(
+    new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
+    std::list<cache_event> &events, enum cache_request_status status,
+    uint8_t* l1d_prediction_table //cwpeng  
+  ) {
+  new_addr_type block_addr = m_config.block_addr(addr);
+
+  uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
+  printf("HashPC: %d\n", storedhashedPC) ;
+  if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
+    l1d_prediction_table[storedhashedPC]--;
+    //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
+  }
+  m_tag_array->set_hashed_pc_from_tag(addr, mf, (uint8_t) mf->get_pc());  //cwpeng
+
+  m_tag_array->access(block_addr, time, cache_index, mf);
+  // Atomics treated as global read/write requests - Perform read, mark line as
+  // MODIFIED
+  if (mf->isatomic()) {
+    assert(mf->get_access_type() == GLOBAL_ACC_R);
+    cache_block_t *block = m_tag_array->get_block(cache_index);
+    if (!block->is_modified_line()) {
+      m_tag_array->inc_dirty();
+    }
+    block->set_status(MODIFIED,
+                      mf->get_access_sector_mask());  // mark line as
+    block->set_byte_mask(mf);
+  }
+  return HIT;
+}
+
 /****** Read miss functions (Set by config file) ******/
 
 /// Baseline read miss: Send read request to lower level memory,
@@ -1969,6 +2046,52 @@ enum cache_request_status data_cache::process_tag_probe(
   return access_status;
 }
 
+enum cache_request_status data_cache::process_tag_probe(
+    bool wr, enum cache_request_status probe_status, new_addr_type addr,
+    unsigned cache_index, mem_fetch *mf, unsigned time,
+    std::list<cache_event> &events,
+    uint8_t* l1d_prediction_table //cwpeng
+  ) {
+  // Each function pointer ( m_[rd/wr]_[hit/miss] ) is set in the
+  // data_cache constructor to reflect the corresponding cache configuration
+  // options. Function pointers were used to avoid many long conditional
+  // branches resulting from many cache configuration options.
+  cache_request_status access_status = probe_status;
+  if (wr) {  // Write
+    if (probe_status == HIT) {
+      access_status =
+          (this->*m_wr_hit)(addr, cache_index, mf, time, events, probe_status);
+    } else if ((probe_status != RESERVATION_FAIL) ||
+               (probe_status == RESERVATION_FAIL &&
+                m_config.m_write_alloc_policy == NO_WRITE_ALLOCATE)) {
+      access_status =
+          (this->*m_wr_miss)(addr, cache_index, mf, time, events, probe_status);
+    } else {
+      // the only reason for reservation fail here is LINE_ALLOC_FAIL (i.e all
+      // lines are reserved)
+      m_stats.inc_fail_stats(mf->get_access_type(), LINE_ALLOC_FAIL,
+                             mf->get_streamID());
+    }
+  } else {  // Read
+    if (probe_status == HIT) {
+      access_status =
+          (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table);
+    } else if (probe_status != RESERVATION_FAIL) {
+      access_status =
+          (this->*m_rd_miss)(addr, cache_index, mf, time, events, probe_status);
+    } else {
+      // the only reason for reservation fail here is LINE_ALLOC_FAIL (i.e all
+      // lines are reserved)
+      m_stats.inc_fail_stats(mf->get_access_type(), LINE_ALLOC_FAIL,
+                             mf->get_streamID());
+    }
+  }
+
+  m_bandwidth_management.use_data_port(mf, access_status, events);
+  return access_status;
+}
+
+
 // Both the L1 and L2 currently use the same access function.
 // Differentiation between the two caches is done through configuration
 // of caching policies.
@@ -1994,6 +2117,28 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   return access_status;
 }
 
+enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
+                                             unsigned time,
+                                             std::list<cache_event> &events,
+                                             uint8_t* l1d_prediction_table // cwpeng
+                                             ) {
+  assert(mf->get_data_size() <= m_config.get_atom_sz());
+  bool wr = mf->get_is_write();
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  enum cache_request_status probe_status =
+      m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+  enum cache_request_status access_status =
+      process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events, l1d_prediction_table); //cwpeng
+  m_stats.inc_stats(mf->get_access_type(),
+                    m_stats.select_stats_status(probe_status, access_status),
+                    mf->get_streamID());
+  m_stats.inc_stats_pw(mf->get_access_type(),
+                       m_stats.select_stats_status(probe_status, access_status),
+                       mf->get_streamID());
+  return access_status;
+}
+
 /// This is meant to model the first level data cache in Fermi.
 /// It is write-evict (global) or write-back (local) at the
 /// granularity of individual blocks (Set by GPGPU-Sim configuration file)
@@ -2002,6 +2147,13 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   return data_cache::access(addr, mf, time, events);
+}
+
+enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
+                                           unsigned time,
+                                           std::list<cache_event> &events,
+                                           uint8_t* l1_prediction_table) { // cwpeng
+  return data_cache::access(addr, mf, time, events, l1_prediction_table);
 }
 
 // The l2 cache access function calls the base data_cache access
