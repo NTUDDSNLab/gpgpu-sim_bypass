@@ -127,6 +127,7 @@ struct cache_block_t {
     m_tag = 0;
     m_block_addr = 0;
     hashPC = 0 ; // cwpeng initialize hashed PC
+    m_bypassBit = false ; // cwpeng initialize bypass bit for adaptive bypassing
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -170,6 +171,7 @@ struct cache_block_t {
   new_addr_type m_block_addr;
 
   uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
+  bool m_bypassBit ; // cwpeng bypass bit for adaptive cache bypassing
 };
 
 struct line_cache_block : public cache_block_t {
@@ -182,6 +184,7 @@ struct line_cache_block : public cache_block_t {
     m_set_modified_on_fill = false;
     m_set_readable_on_fill = false;
     m_readable = true;
+    m_bypassBit = false ; // cwpeng initialize bypass bit
   }
   void allocate(new_addr_type tag, new_addr_type block_addr, unsigned time,
                 mem_access_sector_mask_t sector_mask) {
@@ -303,6 +306,8 @@ struct sector_cache_block : public cache_block_t {
     m_line_last_access_time = 0;
     m_line_fill_time = 0;
     m_dirty_byte_mask.reset();
+    hashPC = 0 ; // cwpeng initialize hashed PC
+    m_bypassBit = false ; // cwpeng initialize bypass bit
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -1720,6 +1725,8 @@ class l1_cache : public data_cache {
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+
+  virtual void fill(mem_fetch *mf, unsigned time); // cwpeng override for prediction table increment
 
   uint8_t prediction_table[128] ; // cwpeng prediction table in L1 cache (4 bits each entry)
 

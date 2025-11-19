@@ -2001,7 +2001,77 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  return data_cache::access(addr, mf, time, events);
+  // cwpeng: Adaptive cache bypassing logic
+  // Check if this access should bypass L1 cache based on prediction table
+  bool isBypassed = false;
+  int threshold = 8; // Threshold from SDBP paper
+  uint8_t hashed_pc = (uint8_t)(mf->get_pc() & 0x7F); // 7-bit hash of PC
+
+  if(prediction_table[hashed_pc] >= threshold) {
+    isBypassed = true;
+  }
+
+  // If bypassed, return MISS to force access to go to L2
+  if(isBypassed) {
+    return MISS;
+  }
+
+  // Perform normal cache access
+  assert(mf->get_data_size() <= m_config.get_atom_sz());
+  bool wr = mf->get_is_write();
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  enum cache_request_status probe_status =
+      m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+
+  // cwpeng: On HIT, decrement prediction table
+  if(probe_status == HIT || probe_status == HIT_RESERVED) {
+    uint8_t stored_hashed_pc = m_tag_array->get_block(cache_index)->hashPC;
+    if(prediction_table[stored_hashed_pc] > 0) {
+      prediction_table[stored_hashed_pc]--;
+    }
+  }
+
+  enum cache_request_status access_status =
+      process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events);
+  m_stats.inc_stats(mf->get_access_type(),
+                    m_stats.select_stats_status(probe_status, access_status),
+                    mf->get_streamID());
+  m_stats.inc_stats_pw(mf->get_access_type(),
+                       m_stats.select_stats_status(probe_status, access_status),
+                       mf->get_streamID());
+  return access_status;
+}
+
+/// cwpeng: Override fill to implement prediction table increment logic
+void l1_cache::fill(mem_fetch *mf, unsigned time) {
+  // Get cache index from extra_mf_fields before calling base fill
+  extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
+  if (e != m_extra_mf_fields.end() && e->second.m_valid) {
+    unsigned cache_index = e->second.m_cache_index;
+
+    // Check if there's a valid victim being evicted
+    cache_block_t *victim_block = m_tag_array->get_block(cache_index);
+    bool victim_valid = victim_block->is_valid_line();
+    uint8_t victim_hashed_pc = victim_block->hashPC;
+
+    // Get the PC of the incoming request
+    uint8_t incoming_hashed_pc = (uint8_t)(mf->get_pc() & 0x7F);
+
+    // Check if this fill is for a bypassed request
+    bool isBypassed = (prediction_table[incoming_hashed_pc] >= 8);
+
+    // Increment prediction table if victim exists and not bypassed
+    if(victim_valid && !isBypassed && prediction_table[victim_hashed_pc] < 15) {
+      prediction_table[victim_hashed_pc]++;
+    }
+
+    // Store hashed PC in the cache block before filling
+    victim_block->hashPC = incoming_hashed_pc;
+  }
+
+  // Call base class fill
+  baseline_cache::fill(mf, time);
 }
 
 // The l2 cache access function calls the base data_cache access
