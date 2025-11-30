@@ -2615,7 +2615,7 @@ void ldst_unit::init(mem_fetch_interface *icnt,
   m_num_writeback_clients =
       5;  // = shared memory, global/local (uncached), L1D, L1T, L1C
   m_writeback_arb = 0;
-  m_next_global = NULL;
+  // cwpeng: m_next_global_queue is now a list, no need to initialize to NULL
   m_last_inst_gpu_sim_cycle = 0;
   m_last_inst_gpu_tot_sim_cycle = 0;
 }
@@ -2770,15 +2770,17 @@ void ldst_unit::writeback() {
         }
         break;
       case 3:  // global/local
-        if (m_next_global) {
-          m_next_wb = m_next_global->get_inst();
-          if (m_next_global->isatomic()) {
+        // cwpeng: Changed to use queue instead of single pointer
+        if (!m_next_global_queue.empty()) {
+          mem_fetch *mf = m_next_global_queue.front();
+          m_next_wb = mf->get_inst();
+          if (mf->isatomic()) {
             m_core->decrement_atomic_count(
-                m_next_global->get_wid(),
-                m_next_global->get_access_warp_mask().count());
+                mf->get_wid(),
+                mf->get_access_warp_mask().count());
           }
-          delete m_next_global;
-          m_next_global = NULL;
+          delete mf;
+          m_next_global_queue.pop_front();
           serviced_client = next_client;
         }
         break;
@@ -2885,13 +2887,13 @@ void ldst_unit::cycle() {
           }
         }
         if (bypassL1D) {
-          if (m_next_global == NULL) {
-            mf->set_status(IN_SHADER_FETCHED,
-                           m_core->get_gpu()->gpu_sim_cycle +
-                               m_core->get_gpu()->gpu_tot_sim_cycle);
-            m_response_fifo.pop_front();
-            m_next_global = mf;
-          }
+          // cwpeng: Changed to use queue - no need to check if NULL
+          // Multiple bypassed responses can now be queued without deadlock
+          mf->set_status(IN_SHADER_FETCHED,
+                         m_core->get_gpu()->gpu_sim_cycle +
+                             m_core->get_gpu()->gpu_tot_sim_cycle);
+          m_response_fifo.pop_front();
+          m_next_global_queue.push_back(mf);
         } else {
           if (m_L1D->fill_port_free()) {
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +

@@ -1458,7 +1458,9 @@ class ldst_unit : public pipelined_simd_unit {
   opndcoll_rfu_t *m_operand_collector;
   Scoreboard *m_scoreboard;
 
-  mem_fetch *m_next_global;
+  // cwpeng: Changed from single pointer to queue to handle multiple bypassed responses
+  // and avoid m_next_global bottleneck that caused deadlock
+  std::list<mem_fetch *> m_next_global_queue;
   warp_inst_t m_next_wb;
   unsigned m_writeback_arb;  // round-robin arbiter for writeback contention
                              // between L1T, L1C, shared
