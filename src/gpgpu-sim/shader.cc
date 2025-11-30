@@ -2869,12 +2869,20 @@ void ldst_unit::cycle() {
                                       // on load miss only
 
         bool bypassL1D = false;
+        uint8_t temp_pc = 0; //cwpeng
+        address_type currPC = mf->get_pc();
+        temp_pc = (currPC == -1) ? (uint8_t) mf->get_original_mf()->get_pc() : (uint8_t) currPC;
+
         if (CACHE_GLOBAL == mf->get_inst().cache_op || (m_L1D == NULL)) {
           bypassL1D = true;
         } else if (mf->get_access_type() == GLOBAL_ACC_R ||
                    mf->get_access_type() ==
                        GLOBAL_ACC_W) {  // global memory access
           if (m_core->get_config()->gmem_skip_L1D) bypassL1D = true;
+          if (m_L1D->prediction_table[temp_pc] >= 8 && mf->get_access_type() == GLOBAL_ACC_R){
+            bypassL1D = true;
+            printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", temp_pc, m_L1D->prediction_table[temp_pc]);
+          }
         }
         if (bypassL1D) {
           if (m_next_global == NULL) {
@@ -2887,7 +2895,7 @@ void ldst_unit::cycle() {
         } else {
           if (m_L1D->fill_port_free()) {
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
-                                m_core->get_gpu()->gpu_tot_sim_cycle);
+                                m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, temp_pc);
             m_response_fifo.pop_front();
           }
         }

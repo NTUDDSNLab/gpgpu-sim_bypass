@@ -130,6 +130,9 @@ class mem_fetch {
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
 
+  bool get_isBypassed() { return m_isBypassed; }
+  void set_isBypassed(bool isBypassed) { m_isBypassed = isBypassed; } //cwpeng
+
  private:
   // request source information
   unsigned m_request_uid;
@@ -171,6 +174,8 @@ class mem_fetch {
 
   const memory_config *m_mem_config;
   unsigned icnt_flit_size;
+
+  bool m_isBypassed; // cwpeng
 
   mem_fetch
       *original_mf;  // this pointer is set up when a request is divided into

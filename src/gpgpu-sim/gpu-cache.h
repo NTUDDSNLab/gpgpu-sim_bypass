@@ -126,7 +126,8 @@ struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
     m_block_addr = 0;
-    m_hashed_pc = 0 ; // cwpeng initialize hashed PC
+    m_hashed_pc = 0 ; // cwpeng initialize hashed PC in L1
+    m_bypassBit = false ; // cwpeng initialize bypass bit in L2
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -964,6 +965,15 @@ class tag_array {
                                   mem_access_sector_mask_t mask, bool is_write,
                                   bool probe_mode = false,
                                   mem_fetch *mf = NULL) const;
+  
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_fetch *mf, bool is_write, bool& victim_valid, //cwpeng
+                                  bool probe_mode = false) const;
+  enum cache_request_status probe(new_addr_type addr, unsigned &idx,
+                                  mem_access_sector_mask_t mask, bool is_write, bool& victim_valid, //cwpeng
+                                  bool probe_mode = false,
+                                  mem_fetch *mf = NULL) const;
+
   enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf);
   enum cache_request_status access(new_addr_type addr, unsigned time,
@@ -971,9 +981,13 @@ class tag_array {
                                    evicted_block_info &evicted, mem_fetch *mf);
 
   void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write);
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc); // cwpeng
+
   void fill(unsigned idx, unsigned time, mem_fetch *mf);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
             mem_access_byte_mask_t byte_mask, bool is_write);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
+            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc); // cwpeng
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
@@ -1330,6 +1344,7 @@ class baseline_cache : public cache_t {
   /// Interface for response from lower memory level (model bandwidth
   /// restictions in caller)
   void fill(mem_fetch *mf, unsigned time);
+  void fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_table, uint8_t hashed_pc);
   /// Checks if mf is waiting to be filled by lower memory level
   bool waiting_for_fill(mem_fetch *mf);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does
@@ -1459,6 +1474,12 @@ class baseline_cache : public cache_t {
                          std::list<cache_event> &events, bool read_only,
                          bool wa);
 
+  void send_read_request(new_addr_type addr, new_addr_type block_addr,
+                         unsigned cache_index, mem_fetch *mf, unsigned time,
+                         bool &do_miss, bool &wb, evicted_block_info &evicted,
+                         std::list<cache_event> &events, bool read_only,
+                         bool wa, bool isBypassed); // cwpeng
+
   /// Sub-class containing all metadata for port bandwidth management
   class bandwidth_management {
    public:
@@ -1545,6 +1566,7 @@ class data_cache : public baseline_cache {
 
     // Set read miss function
     m_rd_miss = &data_cache::rd_miss_base;
+    m_rd_miss_l1d = &data_cache::rd_miss_base_l1d;
 
     // Set write hit function
     switch (m_config.m_write_policy) {
@@ -1635,7 +1657,8 @@ class data_cache : public baseline_cache {
                                               unsigned cache_index,
                                               mem_fetch *mf, unsigned time,
                                               std::list<cache_event> &events,
-                                              uint8_t* l1_prediction_table // cwpeng
+                                              uint8_t* l1_prediction_table, // cwpeng
+                                              bool victim_valid
                                               );
 
  protected:
@@ -1733,6 +1756,17 @@ class data_cache : public baseline_cache {
                                          unsigned time,
                                          std::list<cache_event> &events,
                                          enum cache_request_status status);
+
+  enum cache_request_status (data_cache::*m_rd_miss_l1d)(
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
+      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table, bool &victim_valid); // cwpeng
+  enum cache_request_status rd_miss_base_l1d(new_addr_type addr,
+                                         unsigned cache_index, mem_fetch *mf,
+                                         unsigned time,
+                                         std::list<cache_event> &events,
+                                         enum cache_request_status status,
+                                        uint8_t *l1d_prediction_table, //cwpeng
+                                        bool &victim_valid);
 };
 
 /// This is meant to model the first level data cache in Fermi.
@@ -1747,7 +1781,7 @@ class l1_cache : public data_cache {
            enum cache_gpu_level level)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {
-                    for(int i=0 ; i<128 ; i++){
+                    for(int i=0 ; i<256 ; i++){
                       prediction_table[i] = 8 ; // cwpeng initialize prediction table in constructor
                     }
                    }
@@ -1765,7 +1799,7 @@ class l1_cache : public data_cache {
                                            uint8_t* l1_prediction_table // cwpeng
                                            );
 
-  uint8_t prediction_table[128] ; // cwpeng prediction table in L1 cache (4 bits each entry)
+  uint8_t prediction_table[256] ; // cwpeng prediction table in L1 cache (4 bits each entry)
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
