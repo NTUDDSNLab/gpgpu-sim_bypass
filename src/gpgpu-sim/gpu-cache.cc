@@ -638,18 +638,28 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   bool before = m_lines[idx]->is_modified_line();
   // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
   // redundant memory request
-  if (status == MISS) {
-    m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
-                           mask);
-  } else if (status == SECTOR_MISS) {
-    assert(m_config.m_cache_type == SECTOR);
-    ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+
+  // cwpeng: Only allocate cache line if NOT bypassed
+  // This implements the adaptive cache bypass: when prediction_table[pc] >= threshold,
+  // we skip allocating the cache line to avoid polluting the cache
+  if (!isBypassed) {
+    if (status == MISS) {
+      m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
+                             mask);
+    } else if (status == SECTOR_MISS) {
+      assert(m_config.m_cache_type == SECTOR);
+      ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+    }
   }
+  // If bypassed, we still need to update the fill time and masks for accounting,
+  // but we don't allocate a new cache line
   if (before && !m_lines[idx]->is_modified_line()) {
     m_dirty--;
   }
   before = m_lines[idx]->is_modified_line();
-  m_lines[idx]->fill(time, mask, byte_mask);
+  if (!isBypassed) {
+    m_lines[idx]->fill(time, mask, byte_mask);
+  }
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }

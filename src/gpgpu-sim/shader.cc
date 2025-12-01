@@ -2870,8 +2870,10 @@ void ldst_unit::cycle() {
         assert(!mf->get_is_write());  // L1 cache is write evict, allocate line
                                       // on load miss only
 
+        // cwpeng: Check if this request completely bypasses L1D (gmem_skip_L1D or CACHE_GLOBAL)
+        // For adaptive bypass (prediction_table >= 8), we still call fill() but it won't allocate
         bool bypassL1D = false;
-        uint8_t temp_pc = 0; //cwpeng
+        uint8_t temp_pc = 0;
         address_type currPC = mf->get_pc();
         temp_pc = (currPC == -1) ? (uint8_t) mf->get_original_mf()->get_pc() : (uint8_t) currPC;
 
@@ -2881,20 +2883,21 @@ void ldst_unit::cycle() {
                    mf->get_access_type() ==
                        GLOBAL_ACC_W) {  // global memory access
           if (m_core->get_config()->gmem_skip_L1D) bypassL1D = true;
-          if (m_L1D->prediction_table[temp_pc] >= 8 && mf->get_access_type() == GLOBAL_ACC_R){
-            bypassL1D = true;
-            printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", temp_pc, m_L1D->prediction_table[temp_pc]);
-          }
+          // NOTE: We removed the prediction_table bypass check here!
+          // Adaptive bypass is now handled inside m_L1D->fill() at tag_array::fill()
+          // This ensures MSHR cleanup and proper handling of merged requests
         }
+
         if (bypassL1D) {
-          // cwpeng: Changed to use queue - no need to check if NULL
-          // Multiple bypassed responses can now be queued without deadlock
+          // Only for gmem_skip_L1D and CACHE_GLOBAL: completely bypass L1D
           mf->set_status(IN_SHADER_FETCHED,
                          m_core->get_gpu()->gpu_sim_cycle +
                              m_core->get_gpu()->gpu_tot_sim_cycle);
           m_response_fifo.pop_front();
           m_next_global_queue.push_back(mf);
         } else {
+          // For all other requests (including adaptive bypass), call fill()
+          // The tag_array::fill() will decide whether to allocate cache line
           if (m_L1D->fill_port_free()) {
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                                 m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, temp_pc);
