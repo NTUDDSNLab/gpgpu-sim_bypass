@@ -624,7 +624,10 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
 
   bool isBypassed = false;
   int threshold = 8; // From SDBP paper
-  if(l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)] >= threshold){
+  // if(l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)] >= threshold){
+  //   isBypassed = true;
+  // }
+  if(l1d_prediction_table[hashed_pc] >= threshold){
     isBypassed = true;
   }
 
@@ -638,6 +641,9 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   bool before = m_lines[idx]->is_modified_line();
   // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
   // redundant memory request
+
+  if(!isBypassed){ // cwpeng
+
   if (status == MISS) {
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
@@ -652,6 +658,11 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   m_lines[idx]->fill(time, mask, byte_mask);
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
+  }
+
+  }
+  else{
+    printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
   }
 }
 

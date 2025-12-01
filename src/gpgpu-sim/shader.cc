@@ -2879,10 +2879,10 @@ void ldst_unit::cycle() {
                    mf->get_access_type() ==
                        GLOBAL_ACC_W) {  // global memory access
           if (m_core->get_config()->gmem_skip_L1D) bypassL1D = true;
-          if (m_L1D->prediction_table[temp_pc] >= 8 && mf->get_access_type() == GLOBAL_ACC_R){
-            bypassL1D = true;
-            printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", temp_pc, m_L1D->prediction_table[temp_pc]);
-          }
+          // if (m_L1D->prediction_table[temp_pc] >= 8 && mf->get_access_type() == GLOBAL_ACC_R){
+          //   bypassL1D = true;
+          //   printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", temp_pc, m_L1D->prediction_table[temp_pc]);
+          // }
         }
         if (bypassL1D) {
           if (m_next_global == NULL) {
