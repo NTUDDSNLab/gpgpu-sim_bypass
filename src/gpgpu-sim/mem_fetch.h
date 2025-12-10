@@ -132,6 +132,10 @@ class mem_fetch {
 
   bool get_isBypassed() { return m_isBypassed; }
   void set_isBypassed(bool isBypassed) { m_isBypassed = isBypassed; } //cwpeng
+  void set_L1toL2(bool val) { m_L1toL2 = val ; } // cwpeng
+  bool get_L1toL2() { return m_L1toL2 ; }
+  void set_bypassBit(bool val) { m_bypassBit = val ; } // cwpeng
+  bool get_bypassBit() { return m_bypassBit ; }
 
  private:
   // request source information
@@ -175,7 +179,9 @@ class mem_fetch {
   const memory_config *m_mem_config;
   unsigned icnt_flit_size;
 
-  bool m_isBypassed; // cwpeng
+  bool m_isBypassed; // cwpeng bypass flag
+  bool m_L1toL2 ; // cwpeng memory fetch L1 to L2 flag
+  bool m_bypassBit ; // cwpeng bypass bit from L2
 
   mem_fetch
       *original_mf;  // this pointer is set up when a request is divided into

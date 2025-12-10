@@ -542,6 +542,13 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               m_request_tracker.erase(mf);
               delete mf;
             } else {
+              if(mf->get_L1toL2()){ // if this mf is from L1 | cwpeng
+                bool isBypassed = mf->get_isBypassed();
+                bool bypassBit = m_L2cache->get_bypass_bit_from_l2(mf->get_addr(), mf); // Read existing bypass bit from L2
+                mf->set_bypassBit(bypassBit); // Set the bypass bit in mf to be sent back to L1
+                m_L2cache->set_bypass_bit_from_l2(mf->get_addr(), mf, isBypassed);
+              }
+
               mf->set_reply();
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
@@ -716,6 +723,7 @@ bool memory_sub_partition::busy() const { return !m_request_tracker.empty(); }
 
 std::vector<mem_fetch *>
 memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
+  // printf("L2 access data size: %d\n", mf->get_data_size());
   std::vector<mem_fetch *> result;
   mem_access_sector_mask_t sector_mask = mf->get_access_sector_mask();
   if (mf->get_data_size() == SECTOR_SIZE &&

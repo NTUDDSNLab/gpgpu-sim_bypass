@@ -493,6 +493,15 @@ bool tag_array::get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf){
   }
 }
 
+
+void l2_cache::set_bypass_bit_from_l2 (new_addr_type addr, mem_fetch *mf, bool bypassBit){
+  m_tag_array->set_bypass_bit_from_tag (addr,mf,bypassBit);
+}
+
+bool l2_cache::get_bypass_bit_from_l2 (new_addr_type addr, mem_fetch *mf){
+  return m_tag_array->get_bypass_bit_from_tag(addr,mf);
+}
+
 //cwpeng
 
 enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
@@ -604,13 +613,13 @@ void tag_array::fill(new_addr_type addr, unsigned time, mem_fetch *mf, //on-fill
                      uint8_t *l1d_prediction_table,uint8_t hashed_pc //cwpeng
                     ) { 
   fill(addr, time, mf->get_access_sector_mask(), mf->get_access_byte_mask(),
-       is_write, l1d_prediction_table, hashed_pc);
+       is_write, l1d_prediction_table, hashed_pc, mf->get_bypassBit());
 }
 
 void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
                      mem_access_sector_mask_t mask,
                      mem_access_byte_mask_t byte_mask, bool is_write,
-                     uint8_t *l1d_prediction_table,uint8_t hashed_pc
+                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit
                   ) {
   // assert( m_config.m_alloc_policy == ON_FILL );
   unsigned idx;
@@ -628,13 +637,26 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   //   isBypassed = true;
   // }
   if(l1d_prediction_table[hashed_pc] >= threshold){
+    printf("CWPENG: Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
     isBypassed = true;
   }
+  else{
+    printf("CWPENG: Do not Bypass L1D pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
+  }
+  if(isBypassed){
+    if(bypassBit){
+      printf("L2 indicate misprediction, bypassbit = 1\n") ;
+      l1d_prediction_table[hashed_pc] = threshold-1 ;
+      isBypassed = false ; // if L2 indicates misprediction, do not bypass
+    }
+  }
+  
 
   if(l1d_prediction_table[m_lines[idx]->m_hashed_pc] < 15 && victim_valid && isBypassed==false) //&& m_tag_array->get_hashed_pc_from_tag(addr)->is_valid_line()) // AISH Saturating counter stays at 15
    {
     // l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]++ ;// Rajesh CS752 Victim Hashed PC
     l1d_prediction_table[m_lines[idx]->m_hashed_pc]++ ; //cwpeng (maybe a bug?)
+    printf("CWPENG: PC:%d miss, update table[%d] to %d, ptr:%p\n", hashed_pc, m_lines[idx]->m_hashed_pc, l1d_prediction_table[m_lines[idx]->m_hashed_pc], l1d_prediction_table) ;
     //fprintf(stdout,"MISS rd_miss_l1d Time: %d PC: %d Value: %d\n", time, get_hashed_pc_from_tag(addr,NULL), l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]);
   }
 
@@ -643,7 +665,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   // redundant memory request
 
   if(!isBypassed){ // cwpeng
-
+  // if(true){
   if (status == MISS) {
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
@@ -660,9 +682,6 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
     m_dirty++;
   }
 
-  }
-  else{
-    printf("Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
   }
 }
 
@@ -1477,6 +1496,10 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
     }
   }
 
+  if(mf->get_L1toL2()){ // cwpeng set L2 cache line bypass bit from L1
+    m_tag_array->set_bypass_bit_from_tag(mf->get_addr(), mf, mf->get_isBypassed());
+  }
+
   extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
   assert(e != m_extra_mf_fields.end());
   assert(e->second.m_valid);
@@ -1711,6 +1734,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
     mf->set_addr(mshr_addr);
 
     mf->set_isBypassed(isBypassed); //cwpeng
+    mf->set_L1toL2(true) ;          //cwpeng, mark this mf is from L1 to L2
 
     m_miss_queue.push_back(mf);
     mf->set_status(m_miss_queue_status, time);
@@ -2174,11 +2198,12 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   new_addr_type block_addr = m_config.block_addr(addr);
 
   uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
-  // printf("HashPC: %d\n", storedhashedPC) ;
+  // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
     l1d_prediction_table[storedhashedPC]--;
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   }
+  printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", mf->get_pc()%256, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
   m_tag_array->set_hashed_pc_from_tag(addr, mf, (uint8_t) mf->get_pc());  //cwpeng
 
   m_tag_array->access(block_addr, time, cache_index, mf);
@@ -2462,6 +2487,13 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), victim_valid, true);
   enum cache_request_status access_status =
       process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events, l1d_prediction_table, victim_valid); //cwpeng
+
+  // if(probe_status == HIT){
+  //   printf("L1D HIT  Time: %d PC: %d\n", time, mf->get_pc());
+  // }
+  // else if(access_status == MISS){
+  //   printf("L1D MISS Time: %d PC: %d\n", time, mf->get_pc());
+  // }
   m_stats.inc_stats(mf->get_access_type(),
                     m_stats.select_stats_status(probe_status, access_status),
                     mf->get_streamID());

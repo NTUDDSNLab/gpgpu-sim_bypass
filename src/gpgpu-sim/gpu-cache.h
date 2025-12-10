@@ -172,7 +172,7 @@ struct cache_block_t {
 
   // uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
   uint8_t m_hashed_pc; // cwpeng hashed PC in memory block (7 bits)
-  bool m_bypassBit; // rajesh cs752 L2 Bypass Bit
+  bool m_bypassBit; // cwpeng cs752 L2 Bypass Bit
 };
 
 struct line_cache_block : public cache_block_t {
@@ -987,7 +987,7 @@ class tag_array {
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
             mem_access_byte_mask_t byte_mask, bool is_write);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
-            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc); // cwpeng
+            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit); // cwpeng
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
@@ -1007,7 +1007,7 @@ class tag_array {
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
 
-  uint8_t get_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf);
+  uint8_t get_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf); //cwpeng
   void set_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf, uint8_t hashed_pc);
   void set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit);
   bool get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf);
@@ -1782,7 +1782,7 @@ class l1_cache : public data_cache {
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {
                     for(int i=0 ; i<256 ; i++){
-                      prediction_table[i] = 8 ; // cwpeng initialize prediction table in constructor
+                      prediction_table[i] = 7 ; // cwpeng initialize prediction table in constructor
                     }
                    }
 
@@ -1822,6 +1822,9 @@ class l2_cache : public data_cache {
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {}
 
   virtual ~l2_cache() {}
+
+  virtual void set_bypass_bit_from_l2 (new_addr_type addr, mem_fetch *mf, bool bypassBit);
+  virtual bool get_bypass_bit_from_l2 (new_addr_type addr, mem_fetch *mf); //cwpeng
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
