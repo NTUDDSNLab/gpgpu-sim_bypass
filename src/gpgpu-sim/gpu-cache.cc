@@ -646,10 +646,12 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   if(isBypassed){
     if(bypassBit){
       printf("L2 indicate misprediction, bypassbit = 1\n") ;
-      l1d_prediction_table[hashed_pc] = threshold-1 ;
+      // l1d_prediction_table[hashed_pc] = threshold-1 ;
       isBypassed = false ; // if L2 indicates misprediction, do not bypass
     }
   }
+
+  // isBypassed = false ;
   
 
   if(l1d_prediction_table[m_lines[idx]->m_hashed_pc] < 15 && victim_valid && isBypassed==false) //&& m_tag_array->get_hashed_pc_from_tag(addr)->is_valid_line()) // AISH Saturating counter stays at 15
@@ -2198,11 +2200,15 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   new_addr_type block_addr = m_config.block_addr(addr);
 
   uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
-  // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
+  printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
     l1d_prediction_table[storedhashedPC]--;
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   }
+  // if(l1d_prediction_table[mf->get_pc()%256] > 0 ){ // Saturating counter stays 0 on 0
+  //   l1d_prediction_table[mf->get_pc()%256]--;
+  //   //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
+  // }
   printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", mf->get_pc()%256, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
   m_tag_array->set_hashed_pc_from_tag(addr, mf, (uint8_t) mf->get_pc());  //cwpeng
 
