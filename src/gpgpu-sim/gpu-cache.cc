@@ -683,7 +683,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }
-
+  set_hashed_pc_from_tag(addr, 0, hashed_pc) ;
   }
 }
 
