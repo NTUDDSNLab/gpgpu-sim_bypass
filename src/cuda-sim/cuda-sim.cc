@@ -350,6 +350,28 @@ void function_info::ptx_assemble() {
   printf("  done.\n");
   fflush(stdout);
 
+  // Print PC to instruction mapping for all instructions
+
+  printf("\n");
+
+  printf("GPGPU-Sim PTX: PC to Instruction Mapping for \'%s\':\n", m_name.c_str());
+
+  printf("=================================================================\n");
+
+  for (unsigned ii = 0; ii < n; ii += m_instr_mem[ii]->inst_size()) {
+
+    ptx_instruction *pI = m_instr_mem[ii];
+
+    addr_t inst_pc = pI->get_PC();
+
+    printf("  PC=0x%03llx: %s\n", inst_pc, pI->get_source());
+
+  }
+
+  printf("=================================================================\n");
+
+  fflush(stdout) ;
+
   // disable pdom analysis  here and do it at runtime
 #if 0
    printf("GPGPU-Sim PTX: finding reconvergence points for \'%s\'...\n", m_name.c_str() );

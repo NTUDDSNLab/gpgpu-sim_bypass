@@ -2528,7 +2528,7 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 }
 
 uint8_t l1_cache::pc2hashed_pc(new_addr_type addr){ // cwpeng PC -> 256bit hash PC translation
-  return (addr >> 2) % 256 ;
+  return (addr >> 3) % 256 ;
 }
 
 // The l2 cache access function calls the base data_cache access
