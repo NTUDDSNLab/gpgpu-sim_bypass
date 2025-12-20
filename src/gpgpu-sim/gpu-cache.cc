@@ -2209,8 +2209,9 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   //   l1d_prediction_table[mf->get_pc()%256]--;
   //   //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   // }
-  printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", mf->get_pc()%256, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
-  m_tag_array->set_hashed_pc_from_tag(addr, mf, (uint8_t) mf->get_pc());  //cwpeng
+  uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
+  printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", hashed_pc, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
+  m_tag_array->set_hashed_pc_from_tag(addr, mf, hashed_pc);  //cwpeng
 
   m_tag_array->access(block_addr, time, cache_index, mf);
   // Atomics treated as global read/write requests - Perform read, mark line as
@@ -2285,7 +2286,7 @@ enum cache_request_status data_cache::rd_miss_base_l1d(
   bool isBypassed = false;
   int threshold = 8; // From SDBP paper
   //fprintf(stdout,"AISH, %s, %d\n",__func__, __LINE__);
-  if(l1d_prediction_table[mf->get_pc() % 256] >= threshold){
+  if(l1d_prediction_table[l1_cache::pc2hashed_pc(mf->get_pc())] >= threshold){
     isBypassed = true;
   }
 
@@ -2524,6 +2525,10 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            std::list<cache_event> &events,
                                            uint8_t* l1_prediction_table) { // cwpeng
   return data_cache::access(addr, mf, time, events, l1_prediction_table);
+}
+
+uint8_t l1_cache::pc2hashed_pc(new_addr_type addr){ // cwpeng PC -> 256bit hash PC translation
+  return (addr >> 2) % 256 ;
 }
 
 // The l2 cache access function calls the base data_cache access

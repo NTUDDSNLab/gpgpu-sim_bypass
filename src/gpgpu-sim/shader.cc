@@ -2869,9 +2869,9 @@ void ldst_unit::cycle() {
                                       // on load miss only
 
         bool bypassL1D = false;
-        uint8_t temp_pc = 0; //cwpeng
         address_type currPC = mf->get_pc();
-        temp_pc = (currPC == -1) ? (uint8_t) mf->get_original_mf()->get_pc() : (uint8_t) currPC;
+        address_type temp_pc = (currPC == -1) ? (uint8_t) mf->get_original_mf()->get_pc() : currPC; //cwpeng
+        uint8_t hashed_pc = l1_cache::pc2hashed_pc(temp_pc) ;
 
         if (CACHE_GLOBAL == mf->get_inst().cache_op || (m_L1D == NULL)) {
           bypassL1D = true;
@@ -2895,7 +2895,7 @@ void ldst_unit::cycle() {
         } else {
           if (m_L1D->fill_port_free()) {
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
-                                m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, temp_pc);
+                                m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, hashed_pc);
             m_response_fifo.pop_front();
           }
         }

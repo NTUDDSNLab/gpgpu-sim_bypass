@@ -1800,6 +1800,7 @@ class l1_cache : public data_cache {
                                            );
 
   uint8_t prediction_table[256] ; // cwpeng prediction table in L1 cache (4 bits each entry)
+  static uint8_t pc2hashed_pc(new_addr_type) ; // cwpeng PC -> 256bit hash PC translation
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
