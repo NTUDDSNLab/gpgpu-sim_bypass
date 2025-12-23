@@ -1769,6 +1769,30 @@ class data_cache : public baseline_cache {
                                         bool &victim_valid);
 };
 
+
+class ldst_inst_state{ // cwpeng
+public:
+  uint64_t access_time ;
+  uint64_t hit_time ;
+  uint64_t miss_time ;
+  uint64_t bypass_time ;
+  uint64_t not_bypass_time ;
+
+  double get_hit_rate(){
+    if(hit_time+miss_time==0) return 0.0 ;
+    return (double)hit_time/(double)(hit_time+miss_time) ;
+  }
+  
+  double get_bypass_rate(){
+    if(bypass_time+not_bypass_time==0) return 0.0 ;
+    return (double)bypass_time/(double)(bypass_time+not_bypass_time) ;
+  }
+
+  uint64_t get_l2_access_time(){
+    return bypass_time + not_bypass_time ;
+  }
+} ;
+
 /// This is meant to model the first level data cache in Fermi.
 /// It is write-evict (global) or write-back (local) at
 /// the granularity of individual blocks
@@ -1801,6 +1825,10 @@ class l1_cache : public data_cache {
 
   uint8_t prediction_table[256] ; // cwpeng prediction table in L1 cache (4 bits each entry)
   static uint8_t pc2hashed_pc(new_addr_type) ; // cwpeng PC -> 256bit hash PC translation
+  void print_prediction_table(FILE *fp, unsigned core_id) const; // print prediction table at program end
+
+  static ldst_inst_state inst_state[256] ; // cwpeng load/store instruction state table
+  static void print_ldst_inst_state(FILE *fp) ; // cwpeng print load/store instruction state table at program end
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
@@ -1810,6 +1838,8 @@ class l1_cache : public data_cache {
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {}
 };
+
+
 
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
