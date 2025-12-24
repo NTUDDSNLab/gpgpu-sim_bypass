@@ -2870,7 +2870,7 @@ void ldst_unit::cycle() {
 
         bool bypassL1D = false;
         address_type currPC = mf->get_pc();
-        address_type temp_pc = (currPC == -1) ? (uint8_t) mf->get_original_mf()->get_pc() : currPC; //cwpeng
+        address_type temp_pc = (currPC == -1) ? mf->get_original_mf()->get_pc() : currPC; //cwpeng
         uint8_t hashed_pc = l1_cache::pc2hashed_pc(temp_pc) ;
 
         if (CACHE_GLOBAL == mf->get_inst().cache_op || (m_L1D == NULL)) {

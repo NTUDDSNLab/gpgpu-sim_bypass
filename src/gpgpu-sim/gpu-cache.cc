@@ -667,10 +667,10 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   // redundant memory request
 
   if(isBypassed){
-    l1_cache::inst_state[hashed_pc].bypass_time++ ;
+    l1_cache::inst_stats[hashed_pc].bypass_time++ ;
   }
   else{
-    l1_cache::inst_state[hashed_pc].not_bypass_time++ ;
+    l1_cache::inst_stats[hashed_pc].not_bypass_time++ ;
   }
 
   if(!isBypassed){ // cwpeng
@@ -2429,11 +2429,7 @@ enum cache_request_status data_cache::process_tag_probe(
 
   cache_request_status access_status = probe_status;
 
-  if(access_status == HIT || access_status == HIT_RESERVED){
-    l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
-  }else if(access_status == MISS || access_status == SECTOR_MISS){
-    l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
-  }
+  
 
   if (wr) {  // Write
     if (probe_status == HIT) {
@@ -2452,18 +2448,18 @@ enum cache_request_status data_cache::process_tag_probe(
     }
   } else {  // Read
     if (probe_status == HIT) {
-      // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+      // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
       access_status =
           (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table);
     } else if (probe_status != RESERVATION_FAIL) {
       if (probe_status == MISS || probe_status == SECTOR_MISS) {
-        // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+        // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
       } else if (probe_status == HIT_RESERVED) {
         // A HIT_RESERVED is a hit in the MSHR, which means the data is on its
         // way. It's not a true miss that generates a new memory request.
         // Let's count it as a hit to align with how miss rate is typically
         // calculated.
-        // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
+        // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
       }
       access_status =
           (this->*m_rd_miss_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, victim_valid);
@@ -2526,6 +2522,14 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   // else if(access_status == MISS){
   //   printf("L1D MISS Time: %d PC: %d\n", time, mf->get_pc());
   // }
+  uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
+  enum cache_request_status final_status = m_stats.select_stats_status(probe_status, access_status) ;
+  if(final_status == HIT || final_status == HIT_RESERVED){
+    l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+  }else if(final_status == MISS || final_status == SECTOR_MISS){
+    l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+  }
+
   m_stats.inc_stats(mf->get_access_type(),
                     m_stats.select_stats_status(probe_status, access_status),
                     mf->get_streamID());
@@ -2545,17 +2549,18 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
   return data_cache::access(addr, mf, time, events);
 }
 
-ldst_inst_state l1_cache::inst_state[256];
+ldst_inst_stats l1_cache::inst_stats[256];
 
 enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events,
                                            uint8_t* l1_prediction_table) { // cwpeng
-  inst_state[pc2hashed_pc(mf->get_pc())].access_time++ ;
+  inst_stats[pc2hashed_pc(mf->get_pc())].access_time++ ;
   return data_cache::access(addr, mf, time, events, l1_prediction_table);
 }
 
 uint8_t l1_cache::pc2hashed_pc(new_addr_type addr){ // cwpeng PC -> 256bit hash PC translation
+  assert(addr != (new_addr_type)-1) ;
   return (addr >> 3) % 256 ;
 }
 
@@ -2594,15 +2599,15 @@ void l1_cache::print_prediction_table(FILE *fp, unsigned core_id) const {
   fprintf(fp, "========================================================================\n");
 }
 
-void l1_cache::print_ldst_inst_state(FILE *fp){
+void l1_cache::print_ldst_inst_stats(FILE *fp){
   fprintf(fp, "L1D Prediction Table State:\n");
   for(unsigned i = 0; i < 256; i++){
     fprintf(fp, "HashPC:%3d: access time %d, hit_rate:%f, L2 access time:%d, bypass_rate:%f\n", 
       i, 
-      inst_state[i].access_time,
-      inst_state[i].get_hit_rate(),
-      inst_state[i].get_l2_access_time(),
-      inst_state[i].get_bypass_rate()
+      inst_stats[i].access_time,
+      inst_stats[i].get_hit_rate(),
+      inst_stats[i].get_l2_access_time(),
+      inst_stats[i].get_bypass_rate()
     );
   }
   fprintf(fp, "========================================================================\n");

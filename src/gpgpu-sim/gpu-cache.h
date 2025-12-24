@@ -1770,7 +1770,7 @@ class data_cache : public baseline_cache {
 };
 
 
-class ldst_inst_state{ // cwpeng
+class ldst_inst_stats{ // cwpeng
 public:
   uint64_t access_time ;
   uint64_t hit_time ;
@@ -1827,8 +1827,8 @@ class l1_cache : public data_cache {
   static uint8_t pc2hashed_pc(new_addr_type) ; // cwpeng PC -> 256bit hash PC translation
   void print_prediction_table(FILE *fp, unsigned core_id) const; // print prediction table at program end
 
-  static ldst_inst_state inst_state[256] ; // cwpeng load/store instruction state table
-  static void print_ldst_inst_state(FILE *fp) ; // cwpeng print load/store instruction state table at program end
+  static ldst_inst_stats inst_stats[256] ; // cwpeng load/store instruction state table
+  static void print_ldst_inst_stats(FILE *fp) ; // cwpeng print load/store instruction state table at program end
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
