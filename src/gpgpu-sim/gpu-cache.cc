@@ -2426,7 +2426,15 @@ enum cache_request_status data_cache::process_tag_probe(
   // data_cache constructor to reflect the corresponding cache configuration
   // options. Function pointers were used to avoid many long conditional
   // branches resulting from many cache configuration options.
+
   cache_request_status access_status = probe_status;
+
+  if(access_status == HIT || access_status == HIT_RESERVED){
+    l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+  }else if(access_status == MISS || access_status == SECTOR_MISS){
+    l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+  }
+
   if (wr) {  // Write
     if (probe_status == HIT) {
       access_status =
@@ -2444,18 +2452,18 @@ enum cache_request_status data_cache::process_tag_probe(
     }
   } else {  // Read
     if (probe_status == HIT) {
-      l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+      // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
       access_status =
           (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table);
     } else if (probe_status != RESERVATION_FAIL) {
       if (probe_status == MISS || probe_status == SECTOR_MISS) {
-        l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+        // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
       } else if (probe_status == HIT_RESERVED) {
         // A HIT_RESERVED is a hit in the MSHR, which means the data is on its
         // way. It's not a true miss that generates a new memory request.
         // Let's count it as a hit to align with how miss rate is typically
         // calculated.
-        l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
+        // l1_cache::inst_state[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
       }
       access_status =
           (this->*m_rd_miss_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, victim_valid);
