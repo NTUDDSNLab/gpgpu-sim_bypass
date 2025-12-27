@@ -637,15 +637,15 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   //   isBypassed = true;
   // }
   if(l1d_prediction_table[hashed_pc] >= threshold){
-    printf("CWPENG: Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
+    // printf("CWPENG: Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
     isBypassed = true;
   }
   else{
-    printf("CWPENG: Do not Bypass L1D pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
+    // printf("CWPENG: Do not Bypass L1D pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
   }
   if(isBypassed){
     if(bypassBit){
-      printf("L2 indicate misprediction, bypassbit = 1\n") ;
+      // printf("L2 indicate misprediction, bypassbit = 1\n") ;
       // l1d_prediction_table[hashed_pc] = threshold-1 ;
       isBypassed = false ; // if L2 indicates misprediction, do not bypass
     }
@@ -658,7 +658,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
    {
     // l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]++ ;// Rajesh CS752 Victim Hashed PC
     l1d_prediction_table[m_lines[idx]->m_hashed_pc]++ ; //cwpeng (maybe a bug?)
-    printf("CWPENG: PC:%d miss, update table[%d] to %d, ptr:%p\n", hashed_pc, m_lines[idx]->m_hashed_pc, l1d_prediction_table[m_lines[idx]->m_hashed_pc], l1d_prediction_table) ;
+    // printf("CWPENG: PC:%d miss, update table[%d] to %d, ptr:%p\n", hashed_pc, m_lines[idx]->m_hashed_pc, l1d_prediction_table[m_lines[idx]->m_hashed_pc], l1d_prediction_table) ;
     //fprintf(stdout,"MISS rd_miss_l1d Time: %d PC: %d Value: %d\n", time, get_hashed_pc_from_tag(addr,NULL), l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]);
   }
 
@@ -675,22 +675,22 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
 
   if(!isBypassed){ // cwpeng
   // if(true){
-  if (status == MISS) {
-    m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
-                           mask);
-  } else if (status == SECTOR_MISS) {
-    assert(m_config.m_cache_type == SECTOR);
-    ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
-  }
-  if (before && !m_lines[idx]->is_modified_line()) {
-    m_dirty--;
-  }
-  before = m_lines[idx]->is_modified_line();
-  m_lines[idx]->fill(time, mask, byte_mask);
-  if (m_lines[idx]->is_modified_line() && !before) {
-    m_dirty++;
-  }
-  set_hashed_pc_from_tag(addr, 0, hashed_pc) ;
+    if (status == MISS) {
+      m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
+                            mask);
+    } else if (status == SECTOR_MISS) {
+      assert(m_config.m_cache_type == SECTOR);
+      ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+    }
+    if (before && !m_lines[idx]->is_modified_line()) {
+      m_dirty--;
+    }
+    before = m_lines[idx]->is_modified_line();
+    m_lines[idx]->fill(time, mask, byte_mask);
+    if (m_lines[idx]->is_modified_line() && !before) {
+      m_dirty++;
+    }
+    set_hashed_pc_from_tag(addr, 0, hashed_pc) ;
   }
 }
 
@@ -2207,7 +2207,7 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   new_addr_type block_addr = m_config.block_addr(addr);
 
   uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
-  printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
+  // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
     l1d_prediction_table[storedhashedPC]--;
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
@@ -2217,7 +2217,7 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   //   //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   // }
   uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
-  printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", hashed_pc, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
+  // printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", hashed_pc, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
   m_tag_array->set_hashed_pc_from_tag(addr, mf, hashed_pc);  //cwpeng
 
   m_tag_array->access(block_addr, time, cache_index, mf);
@@ -2525,9 +2525,11 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
   enum cache_request_status final_status = m_stats.select_stats_status(probe_status, access_status) ;
   if(final_status == HIT || final_status == HIT_RESERVED){
-    l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+    l1_cache::inst_stats[hashed_pc].hit_time++ ;
+    l1_cache::inst_stats[hashed_pc].access_time++ ;
   }else if(final_status == MISS || final_status == SECTOR_MISS){
-    l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+    l1_cache::inst_stats[hashed_pc].miss_time++;
+    l1_cache::inst_stats[hashed_pc].access_time++ ;
   }
 
   m_stats.inc_stats(mf->get_access_type(),
@@ -2555,7 +2557,6 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events,
                                            uint8_t* l1_prediction_table) { // cwpeng
-  inst_stats[pc2hashed_pc(mf->get_pc())].access_time++ ;
   return data_cache::access(addr, mf, time, events, l1_prediction_table);
 }
 
@@ -2602,7 +2603,7 @@ void l1_cache::print_prediction_table(FILE *fp, unsigned core_id) const {
 void l1_cache::print_ldst_inst_stats(FILE *fp){
   fprintf(fp, "L1D Prediction Table State:\n");
   for(unsigned i = 0; i < 256; i++){
-    fprintf(fp, "HashPC:%3d: access time %d, hit_rate:%f, L2 access time:%d, bypass_rate:%f\n", 
+    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f\n", 
       i, 
       inst_stats[i].access_time,
       inst_stats[i].get_hit_rate(),
