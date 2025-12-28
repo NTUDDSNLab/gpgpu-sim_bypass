@@ -465,6 +465,36 @@ void tag_array::set_hashed_pc_from_tag(new_addr_type addr, mem_fetch *mf, uint8_
   }
 }
 
+bool tag_array::get_reuse_flag_from_tag(new_addr_type addr){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      return line->reuse_flag;
+    }
+  }
+}
+
+
+void tag_array::set_reuse_flag_from_tag(new_addr_type addr, bool reuse){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache and update on HIT access with most recent PC. Rajesh CS752
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      line->reuse_flag = reuse;
+    }
+  }
+}
+
+
 void tag_array::set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit){
   unsigned set_index = m_config.set_index(addr);
   new_addr_type tag = m_config.tag(addr);
@@ -673,6 +703,14 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
     l1_cache::inst_stats[hashed_pc].not_bypass_time++ ;
   }
 
+  if(!isBypassed && victim_valid){
+    bool victim_line_reuse = m_lines[idx]->reuse_flag ;
+
+    if(victim_line_reuse == false){
+      l1_cache::inst_stats[m_lines[idx]->m_hashed_pc].no_reuse_time++ ;
+    }
+  }
+
   if(!isBypassed){ // cwpeng
   // if(true){
     if (status == MISS) {
@@ -691,6 +729,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
       m_dirty++;
     }
     set_hashed_pc_from_tag(addr, 0, hashed_pc) ;
+    set_reuse_flag_from_tag(addr, false) ;
   }
 }
 
@@ -2207,6 +2246,10 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   new_addr_type block_addr = m_config.block_addr(addr);
 
   uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
+  bool reuse_flag = m_tag_array->get_reuse_flag_from_tag(addr); // Rajesh CS752
+  if(!reuse_flag){
+    l1_cache::inst_stats[storedhashedPC].reuse_time++ ;
+  }
   // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
     l1d_prediction_table[storedhashedPC]--;
@@ -2219,6 +2262,7 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
   // printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", hashed_pc, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
   m_tag_array->set_hashed_pc_from_tag(addr, mf, hashed_pc);  //cwpeng
+  m_tag_array->set_reuse_flag_from_tag(addr, true); //cwpeng
 
   m_tag_array->access(block_addr, time, cache_index, mf);
   // Atomics treated as global read/write requests - Perform read, mark line as
@@ -2603,12 +2647,14 @@ void l1_cache::print_prediction_table(FILE *fp, unsigned core_id) const {
 void l1_cache::print_ldst_inst_stats(FILE *fp){
   fprintf(fp, "L1D Prediction Table State:\n");
   for(unsigned i = 0; i < 256; i++){
-    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f\n", 
+    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f, occupy_l1_count:%8d, reuse_rate:%1.5f\n", 
       i, 
       inst_stats[i].access_time,
       inst_stats[i].get_hit_rate(),
       inst_stats[i].get_l2_access_time(),
-      inst_stats[i].get_bypass_rate()
+      inst_stats[i].get_bypass_rate(),
+      inst_stats[i].no_reuse_time + inst_stats[i].reuse_time,
+      inst_stats[i].get_reuse_rate()
     );
   }
   fprintf(fp, "========================================================================\n");

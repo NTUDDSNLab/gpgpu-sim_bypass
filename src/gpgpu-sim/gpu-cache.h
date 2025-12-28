@@ -127,6 +127,7 @@ struct cache_block_t {
     m_tag = 0;
     m_block_addr = 0;
     m_hashed_pc = 0 ; // cwpeng initialize hashed PC in L1
+    reuse_flag = false ; // cwpeng initialize reuse flag for hashed PC
     m_bypassBit = false ; // cwpeng initialize bypass bit in L2
   }
 
@@ -170,8 +171,8 @@ struct cache_block_t {
   new_addr_type m_tag;
   new_addr_type m_block_addr;
 
-  // uint8_t hashPC ; // cwpeng hashed PC in memory block (7 bits)
-  uint8_t m_hashed_pc; // cwpeng hashed PC in memory block (7 bits)
+  uint8_t m_hashed_pc; // cwpeng hashed PC in memory block (8 bits)
+  bool reuse_flag ; // cwpeng reuse flag for hashed PC
   bool m_bypassBit; // cwpeng cs752 L2 Bypass Bit
 };
 
@@ -1009,6 +1010,8 @@ class tag_array {
 
   uint8_t get_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf); //cwpeng
   void set_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf, uint8_t hashed_pc);
+  bool get_reuse_flag_from_tag(new_addr_type addr); //cwpeng
+  void set_reuse_flag_from_tag(new_addr_type addr, bool reuse);
   void set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit);
   bool get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf);
 
@@ -1777,6 +1780,8 @@ public:
   uint64_t miss_time ;
   uint64_t bypass_time ;
   uint64_t not_bypass_time ;
+  uint64_t reuse_time ;
+  uint64_t no_reuse_time ;
 
   double get_hit_rate(){
     if(hit_time+miss_time==0) return 0.0 ;
@@ -1790,6 +1795,11 @@ public:
 
   uint64_t get_l2_access_time(){
     return bypass_time + not_bypass_time ;
+  }
+
+  double get_reuse_rate(){
+    if(reuse_time+no_reuse_time==0) return 0.0 ;
+    return (double)reuse_time/(double)(reuse_time+no_reuse_time) ;
   }
 } ;
 
