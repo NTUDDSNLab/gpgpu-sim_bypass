@@ -643,13 +643,13 @@ void tag_array::fill(new_addr_type addr, unsigned time, mem_fetch *mf, //on-fill
                      uint8_t *l1d_prediction_table,uint8_t hashed_pc //cwpeng
                     ) { 
   fill(addr, time, mf->get_access_sector_mask(), mf->get_access_byte_mask(),
-       is_write, l1d_prediction_table, hashed_pc, mf->get_bypassBit());
+       is_write, l1d_prediction_table, hashed_pc, mf->get_bypassBit(), mf); // cwpeng mf for print PC
 }
 
 void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
                      mem_access_sector_mask_t mask,
                      mem_access_byte_mask_t byte_mask, bool is_write,
-                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit
+                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf
                   ) {
   // assert( m_config.m_alloc_policy == ON_FILL );
   unsigned idx;
@@ -675,13 +675,17 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   }
   if(isBypassed){
     if(bypassBit){
-      // printf("L2 indicate misprediction, bypassbit = 1\n") ;
+      printf("L2 indicate misprediction, bypassbit = 1, PC=%llx\n", mf->get_pc()); ;
       // l1d_prediction_table[hashed_pc] = threshold-1 ;
       isBypassed = false ; // if L2 indicates misprediction, do not bypass
+      l1_cache::inst_stats[hashed_pc].misprediction_time++ ;
+    }
+    else{
+      l1_cache::inst_stats[hashed_pc].no_misprediction_time++ ; 
     }
   }
 
-  // isBypassed = false ;
+  // isBypassed = false ; // For testing without bypass
   
 
   if(l1d_prediction_table[m_lines[idx]->m_hashed_pc] < 15 && victim_valid && isBypassed==false) //&& m_tag_array->get_hashed_pc_from_tag(addr)->is_valid_line()) // AISH Saturating counter stays at 15
@@ -1587,6 +1591,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_
 
     if (e->second.pending_read > 0) {
       // wait for the other requests to come back
+      // printf("pending_read=%d\n", e->second.pending_read);
       delete mf;
       return;
     } else {
@@ -2645,16 +2650,17 @@ void l1_cache::print_prediction_table(FILE *fp, unsigned core_id) const {
 }
 
 void l1_cache::print_ldst_inst_stats(FILE *fp){
-  fprintf(fp, "L1D Prediction Table State:\n");
+  fprintf(fp, "L1D Prediction Table Stats:\n");
   for(unsigned i = 0; i < 256; i++){
-    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f, occupy_l1_count:%8d, reuse_rate:%1.5f\n", 
+    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f, occupy_l1_count:%8d, reuse_rate:%1.5f, mispredict_rate:%1.5f\n", 
       i, 
       inst_stats[i].access_time,
       inst_stats[i].get_hit_rate(),
       inst_stats[i].get_l2_access_time(),
       inst_stats[i].get_bypass_rate(),
       inst_stats[i].no_reuse_time + inst_stats[i].reuse_time,
-      inst_stats[i].get_reuse_rate()
+      inst_stats[i].get_reuse_rate(),
+      inst_stats[i].get_misprediction_rate()
     );
   }
   fprintf(fp, "========================================================================\n");

@@ -988,7 +988,7 @@ class tag_array {
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
             mem_access_byte_mask_t byte_mask, bool is_write);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
-            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit); // cwpeng
+            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf); // cwpeng
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
@@ -1782,6 +1782,8 @@ public:
   uint64_t not_bypass_time ;
   uint64_t reuse_time ;
   uint64_t no_reuse_time ;
+  uint64_t misprediction_time ;
+  uint64_t no_misprediction_time ;
 
   double get_hit_rate(){
     if(hit_time+miss_time==0) return 0.0 ;
@@ -1800,6 +1802,11 @@ public:
   double get_reuse_rate(){
     if(reuse_time+no_reuse_time==0) return 0.0 ;
     return (double)reuse_time/(double)(reuse_time+no_reuse_time) ;
+  }
+
+  double get_misprediction_rate(){
+    if(misprediction_time+no_misprediction_time==0) return 0.0 ;
+    return (double)misprediction_time/(double)(misprediction_time+no_misprediction_time) ;
   }
 } ;
 
