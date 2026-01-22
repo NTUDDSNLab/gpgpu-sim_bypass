@@ -521,6 +521,7 @@ bool tag_array::get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf){
       return line->m_bypassBit;
     }
   }
+  return false;
 }
 
 
@@ -572,6 +573,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         }
         m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
+        m_lines[idx]->m_bypassBit = false;
       }
       break;
     case SECTOR_MISS:
@@ -624,6 +626,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   if (status == MISS) {
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
+    m_lines[idx]->m_bypassBit = false;
   } else if (status == SECTOR_MISS) {
     assert(m_config.m_cache_type == SECTOR);
     ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
@@ -675,7 +678,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   }
   if(isBypassed){
     if(bypassBit){
-      printf("L2 indicate misprediction, bypassbit = 1, PC=%llx\n", mf->get_pc()); ;
+      // printf("L2 indicate misprediction, bypassbit = 1, PC=%llx\n", mf->get_pc()); ;
       // l1d_prediction_table[hashed_pc] = threshold-1 ;
       isBypassed = false ; // if L2 indicates misprediction, do not bypass
       l1_cache::inst_stats[hashed_pc].misprediction_time++ ;
@@ -720,6 +723,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
     if (status == MISS) {
       m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                             mask);
+      m_lines[idx]->m_bypassBit = false;
     } else if (status == SECTOR_MISS) {
       assert(m_config.m_cache_type == SECTOR);
       ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);

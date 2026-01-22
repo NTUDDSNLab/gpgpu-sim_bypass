@@ -554,6 +554,10 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                 //   m_L2cache->set_bypass_bit_from_l2(mf->get_addr(), mf, isBypassed);
                 // }
                 m_L2cache->set_bypass_bit_from_l2(mf->get_addr(), mf, isBypassed);
+
+                // assert(bypassBit) ;
+
+                // mf->set_bypassBit(true);
               }
 
               mf->set_reply();
@@ -749,6 +753,11 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
           std::bitset<SECTOR_CHUNCK_SIZE>().set(i), SECTOR_SIZE, mf->is_write(),
           m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->get_wid(),
           mf->get_sid(), mf->get_tpc(), mf, mf->get_streamID());
+      
+      if(i == 0){
+        n_mf->set_L1toL2(mf->get_L1toL2());
+        n_mf->set_isBypassed(mf->get_isBypassed());
+      }
 
       result.push_back(n_mf);
     }

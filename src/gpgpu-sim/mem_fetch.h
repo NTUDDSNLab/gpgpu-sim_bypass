@@ -137,6 +137,8 @@ class mem_fetch {
   void set_bypassBit(bool val) { m_bypassBit = val ; } // cwpeng
   bool get_bypassBit() { return m_bypassBit ; }
 
+  bool L2toL1 = false ; // cwpeng: indicate this mf is from L2 to L1
+
  private:
   // request source information
   unsigned m_request_uid;
