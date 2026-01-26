@@ -694,7 +694,9 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   if(l1d_prediction_table[m_lines[idx]->m_hashed_pc] < 15 && victim_valid && isBypassed==false) //&& m_tag_array->get_hashed_pc_from_tag(addr)->is_valid_line()) // AISH Saturating counter stays at 15
    {
     // l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]++ ;// Rajesh CS752 Victim Hashed PC
-    l1d_prediction_table[m_lines[idx]->m_hashed_pc]++ ; //cwpeng (maybe a bug?)
+    if(mf->get_is_representative()){
+      l1d_prediction_table[m_lines[idx]->m_hashed_pc]++ ; //cwpeng (maybe a bug?)
+    }
     // printf("CWPENG: PC:%d miss, update table[%d] to %d, ptr:%p\n", hashed_pc, m_lines[idx]->m_hashed_pc, l1d_prediction_table[m_lines[idx]->m_hashed_pc], l1d_prediction_table) ;
     //fprintf(stdout,"MISS rd_miss_l1d Time: %d PC: %d Value: %d\n", time, get_hashed_pc_from_tag(addr,NULL), l1d_prediction_table[get_hashed_pc_from_tag(addr,NULL)]);
   }
@@ -2260,7 +2262,7 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
     l1_cache::inst_stats[storedhashedPC].reuse_time++ ;
   }
   // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
-  if(l1d_prediction_table[storedhashedPC] > 0 ){ // Saturating counter stays 0 on 0
+  if(l1d_prediction_table[storedhashedPC] > 0 && mf->get_is_representative()){ // Saturating counter stays 0 on 0
     l1d_prediction_table[storedhashedPC]--;
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   }
@@ -2347,7 +2349,9 @@ enum cache_request_status data_cache::rd_miss_base_l1d(
   int threshold = 8; // From SDBP paper
   //fprintf(stdout,"AISH, %s, %d\n",__func__, __LINE__);
   if(l1d_prediction_table[l1_cache::pc2hashed_pc(mf->get_pc())] >= threshold){
-    isBypassed = true;
+    if(mf->get_is_representative()){
+      isBypassed = true;
+    }
   }
 
   new_addr_type block_addr = m_config.block_addr(addr);

@@ -79,6 +79,7 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
 
   m_isBypassed = false; // cwpeng
   m_L1toL2 = false ; // cwpeng initialize these flags
+  m_is_representative = false;  // 新增：默认为false
 }
 
 mem_fetch::~mem_fetch() { m_status = MEM_FETCH_DELETED; }

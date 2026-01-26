@@ -2070,10 +2070,18 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
       if (inst.accessq_empty()) return result;
 
+      // 新增：获取access并检查是否包含thread 0
+      const mem_access_t &access = inst.accessq_back();
+      bool contains_thread0 = access.get_warp_mask().test(0);
+
       mem_fetch *mf =
           m_mf_allocator->alloc(inst, inst.accessq_back(),
                                 m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
+
+      // ⭐ 新增：设置representative标志
+      mf->set_is_representative(contains_thread0);
+
       unsigned bank_id = m_config->m_L1D_config.set_bank(mf->get_addr());
       assert(bank_id < m_config->m_L1D_config.l1_banks);
 
@@ -2104,10 +2112,18 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
     return result;
   } else {
+    // ⭐ 无latency分支也要修改
+    const mem_access_t &access = inst.accessq_back();
+    bool contains_thread0 = access.get_warp_mask().test(0);
+
     mem_fetch *mf =
         m_mf_allocator->alloc(inst, inst.accessq_back(),
                               m_core->get_gpu()->gpu_sim_cycle +
                                   m_core->get_gpu()->gpu_tot_sim_cycle);
+
+    // ⭐ 新增：设置representative标志
+    mf->set_is_representative(contains_thread0);
+
     std::list<cache_event> events;
     enum cache_request_status status = cache->access(
         mf->get_addr(), mf,

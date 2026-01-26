@@ -139,6 +139,10 @@ class mem_fetch {
 
   bool L2toL1 = false ; // cwpeng: indicate this mf is from L2 to L1
 
+  // 新增：设置和获取representative标志
+  void set_is_representative(bool val) { m_is_representative = val; }
+  bool get_is_representative() const { return m_is_representative; }
+
  private:
   // request source information
   unsigned m_request_uid;
@@ -191,6 +195,9 @@ class mem_fetch {
                      // size), so the pointer refers to the original request
   mem_fetch *original_wr_mf;  // this pointer refers to the original write req,
                               // when fetch-on-write policy is used
+
+  // 新增：标记这个mf是否代表整个warp_inst进行prediction更新
+  bool m_is_representative = false ;  // 默认false，只有包含thread 0的mf为true
 };
 
 #endif
