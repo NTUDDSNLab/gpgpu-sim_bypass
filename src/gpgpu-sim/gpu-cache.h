@@ -982,13 +982,13 @@ class tag_array {
                                    evicted_block_info &evicted, mem_fetch *mf);
 
   void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write);
-  void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc); // cwpeng
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, ldst_inst_stats *inst_stats); // cwpeng
 
   void fill(unsigned idx, unsigned time, mem_fetch *mf);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
             mem_access_byte_mask_t byte_mask, bool is_write);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
-            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf); // cwpeng
+            mem_access_byte_mask_t byte_mask, bool is_write, uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf, ldst_inst_stats *inst_stats); // cwpeng
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
@@ -1347,7 +1347,7 @@ class baseline_cache : public cache_t {
   /// Interface for response from lower memory level (model bandwidth
   /// restictions in caller)
   void fill(mem_fetch *mf, unsigned time);
-  void fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_table, uint8_t hashed_pc);
+  void fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_table, uint8_t hashed_pc, ldst_inst_stats *inst_stats);
   /// Checks if mf is waiting to be filled by lower memory level
   bool waiting_for_fill(mem_fetch *mf);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does

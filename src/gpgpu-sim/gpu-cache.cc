@@ -643,16 +643,18 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
 
 void tag_array::fill(new_addr_type addr, unsigned time, mem_fetch *mf, //on-fill
                      bool is_write,
-                     uint8_t *l1d_prediction_table,uint8_t hashed_pc //cwpeng
-                    ) { 
+                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, //cwpeng
+                     ldst_inst_stats *inst_stats
+                    ) {
   fill(addr, time, mf->get_access_sector_mask(), mf->get_access_byte_mask(),
-       is_write, l1d_prediction_table, hashed_pc, mf->get_bypassBit(), mf); // cwpeng mf for print PC
+       is_write, l1d_prediction_table, hashed_pc, mf->get_bypassBit(), mf, inst_stats); // cwpeng mf for print PC
 }
 
 void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
                      mem_access_sector_mask_t mask,
                      mem_access_byte_mask_t byte_mask, bool is_write,
-                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf
+                     uint8_t *l1d_prediction_table,uint8_t hashed_pc, bool bypassBit, mem_fetch *mf,
+                     ldst_inst_stats *inst_stats
                   ) {
   // assert( m_config.m_alloc_policy == ON_FILL );
   unsigned idx;
@@ -1587,7 +1589,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
 }
 
 
-void baseline_cache::fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_table, uint8_t hashed_pc) { //cwpeng
+void baseline_cache::fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_table, uint8_t hashed_pc, ldst_inst_stats *inst_stats) { //cwpeng
   if (m_config.m_mshr_type == SECTOR_ASSOC) {
     assert(mf->get_original_mf());
     extra_mf_fields_lookup::iterator e =
@@ -1615,7 +1617,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_
   if (m_config.m_alloc_policy == ON_MISS)
     m_tag_array->fill(e->second.m_cache_index, time, mf);
   else if (m_config.m_alloc_policy == ON_FILL) {
-    m_tag_array->fill(e->second.m_block_addr, time, mf, mf->is_write(), l1d_prediction_table, hashed_pc); //cwpeng
+    m_tag_array->fill(e->second.m_block_addr, time, mf, mf->is_write(), l1d_prediction_table, hashed_pc, inst_stats); //cwpeng
   } else
     abort();
   bool has_atomic = false;
