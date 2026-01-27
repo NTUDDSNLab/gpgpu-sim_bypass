@@ -2914,7 +2914,7 @@ void ldst_unit::cycle() {
         } else {
           if (m_L1D->fill_port_free()) {
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
-                                m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, hashed_pc, m_L1D->inst_stats);
+                                m_core->get_gpu()->gpu_tot_sim_cycle, m_L1D->prediction_table, hashed_pc, m_L1D->get_inst_stats());
             m_response_fifo.pop_front();
           }
         }

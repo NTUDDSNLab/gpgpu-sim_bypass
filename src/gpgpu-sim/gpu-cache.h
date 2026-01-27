@@ -1603,6 +1603,8 @@ class data_cache : public baseline_cache {
 
   virtual ~data_cache() {}
 
+  ldst_inst_stats *get_inst_stats() { return inst_stats; } // cwpeng public accessor
+
   virtual void init(mem_fetch_allocator *mfcreator) {
     m_memfetch_creator = mfcreator;
 
