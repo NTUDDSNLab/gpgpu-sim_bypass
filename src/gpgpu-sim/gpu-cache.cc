@@ -681,10 +681,10 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
       // printf("L2 indicate misprediction, bypassbit = 1, PC=%llx\n", mf->get_pc()); ;
       // l1d_prediction_table[hashed_pc] = threshold-1 ;
       isBypassed = false ; // if L2 indicates misprediction, do not bypass
-      l1_cache::inst_stats[hashed_pc].misprediction_time++ ;
+      inst_stats[hashed_pc].misprediction_time++ ;
     }
     else{
-      l1_cache::inst_stats[hashed_pc].no_misprediction_time++ ; 
+      inst_stats[hashed_pc].no_misprediction_time++ ; 
     }
   }
 
@@ -706,17 +706,17 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   // redundant memory request
 
   if(isBypassed){
-    l1_cache::inst_stats[hashed_pc].bypass_time++ ;
+    inst_stats[hashed_pc].bypass_time++ ;
   }
   else{
-    l1_cache::inst_stats[hashed_pc].not_bypass_time++ ;
+    inst_stats[hashed_pc].not_bypass_time++ ;
   }
 
   if(!isBypassed && victim_valid){
     bool victim_line_reuse = m_lines[idx]->reuse_flag ;
 
     if(victim_line_reuse == false){
-      l1_cache::inst_stats[m_lines[idx]->m_hashed_pc].no_reuse_time++ ;
+      inst_stats[m_lines[idx]->m_hashed_pc].no_reuse_time++ ;
     }
   }
 
@@ -2259,7 +2259,7 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   uint8_t storedhashedPC = m_tag_array->get_hashed_pc_from_tag(addr, mf); // Rajesh CS752
   bool reuse_flag = m_tag_array->get_reuse_flag_from_tag(addr); // Rajesh CS752
   if(!reuse_flag){
-    l1_cache::inst_stats[storedhashedPC].reuse_time++ ;
+    inst_stats[storedhashedPC].reuse_time++ ;
   }
   // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0){ // Saturating counter stays 0 on 0
@@ -2507,18 +2507,18 @@ enum cache_request_status data_cache::process_tag_probe(
     }
   } else {  // Read
     if (probe_status == HIT) {
-      // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
+      // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
       access_status =
           (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table);
     } else if (probe_status != RESERVATION_FAIL) {
       if (probe_status == MISS || probe_status == SECTOR_MISS) {
-        // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
+        // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
       } else if (probe_status == HIT_RESERVED) {
         // A HIT_RESERVED is a hit in the MSHR, which means the data is on its
         // way. It's not a true miss that generates a new memory request.
         // Let's count it as a hit to align with how miss rate is typically
         // calculated.
-        // l1_cache::inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
+        // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
       }
       access_status =
           (this->*m_rd_miss_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, victim_valid);
@@ -2584,11 +2584,11 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   uint8_t hashed_pc = l1_cache::pc2hashed_pc(mf->get_pc()) ;
   enum cache_request_status final_status = m_stats.select_stats_status(probe_status, access_status) ;
   if(final_status == HIT || final_status == HIT_RESERVED){
-    l1_cache::inst_stats[hashed_pc].hit_time++ ;
-    l1_cache::inst_stats[hashed_pc].access_time++ ;
+    inst_stats[hashed_pc].hit_time++ ;
+    inst_stats[hashed_pc].access_time++ ;
   }else if(final_status == MISS || final_status == SECTOR_MISS){
-    l1_cache::inst_stats[hashed_pc].miss_time++;
-    l1_cache::inst_stats[hashed_pc].access_time++ ;
+    inst_stats[hashed_pc].miss_time++;
+    inst_stats[hashed_pc].access_time++ ;
   }
 
   m_stats.inc_stats(mf->get_access_type(),
@@ -2610,7 +2610,7 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
   return data_cache::access(addr, mf, time, events);
 }
 
-ldst_inst_stats l1_cache::inst_stats[256];
+// inst_stats is now a non-static instance member of data_cache (per-SM)
 
 enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
@@ -2659,11 +2659,13 @@ void l1_cache::print_prediction_table(FILE *fp, unsigned core_id) const {
   fprintf(fp, "========================================================================\n");
 }
 
-void l1_cache::print_ldst_inst_stats(FILE *fp){
-  fprintf(fp, "L1D Prediction Table Stats:\n");
+void l1_cache::print_ldst_inst_stats(FILE *fp, unsigned core_id) const {
+  fprintf(fp, "L1D Prediction Table Stats (Core %u):\n", core_id);
   for(unsigned i = 0; i < 256; i++){
-    fprintf(fp, "HashPC:%3d: access time %8d, hit_rate:%1.5f, L2 access time:%7d, bypass_rate:%1.5f, occupy_l1_count:%8d, reuse_rate:%1.5f, mispredict_rate:%1.5f\n", 
-      i, 
+    if(inst_stats[i].access_time == 0 && inst_stats[i].get_l2_access_time() == 0) continue; // skip empty entries
+    fprintf(fp, "Core:%3u HashPC:%3d: access time %8lu, hit_rate:%1.5f, L2 access time:%7lu, bypass_rate:%1.5f, occupy_l1_count:%8lu, reuse_rate:%1.5f, mispredict_rate:%1.5f\n",
+      core_id,
+      i,
       inst_stats[i].access_time,
       inst_stats[i].get_hit_rate(),
       inst_stats[i].get_l2_access_time(),

@@ -1516,7 +1516,10 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   // shader_print_l1_miss_stat( stdout );
   shader_print_cache_stats(stdout);
 
-  l1_cache::print_ldst_inst_stats(stdout) ;
+  // cwpeng: print per-SM ldst inst stats
+  for (unsigned i = 0; i < m_config.num_cluster(); i++) {
+    m_cluster[i]->print_per_sm_ldst_inst_stats(stdout);
+  }
 
   cache_stats core_cache_stats;
   core_cache_stats.clear();

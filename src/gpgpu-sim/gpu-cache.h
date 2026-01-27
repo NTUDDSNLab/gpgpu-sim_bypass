@@ -1542,6 +1542,47 @@ class read_only_cache : public baseline_cache {
                        new_tag_array) {}
 };
 
+class ldst_inst_stats{ // cwpeng
+public:
+  uint64_t access_time ;
+  uint64_t hit_time ;
+  uint64_t miss_time ;
+  uint64_t bypass_time ;
+  uint64_t not_bypass_time ;
+  uint64_t reuse_time ;
+  uint64_t no_reuse_time ;
+  uint64_t misprediction_time ;
+  uint64_t no_misprediction_time ;
+
+  ldst_inst_stats() : access_time(0), hit_time(0), miss_time(0),
+    bypass_time(0), not_bypass_time(0), reuse_time(0), no_reuse_time(0),
+    misprediction_time(0), no_misprediction_time(0) {}
+
+  double get_hit_rate() const {
+    if(hit_time+miss_time==0) return 0.0 ;
+    return (double)hit_time/(double)(hit_time+miss_time) ;
+  }
+
+  double get_bypass_rate() const {
+    if(bypass_time+not_bypass_time==0) return 0.0 ;
+    return (double)bypass_time/(double)(bypass_time+not_bypass_time) ;
+  }
+
+  uint64_t get_l2_access_time() const {
+    return bypass_time + not_bypass_time ;
+  }
+
+  double get_reuse_rate() const {
+    if(reuse_time+no_reuse_time==0) return 0.0 ;
+    return (double)reuse_time/(double)(reuse_time+no_reuse_time) ;
+  }
+
+  double get_misprediction_rate() const {
+    if(misprediction_time+no_misprediction_time==0) return 0.0 ;
+    return (double)misprediction_time/(double)(misprediction_time+no_misprediction_time) ;
+  }
+} ;
+
 /// Data cache - Implements common functions for L1 and L2 data cache
 class data_cache : public baseline_cache {
  public:
@@ -1770,45 +1811,9 @@ class data_cache : public baseline_cache {
                                          enum cache_request_status status,
                                         uint8_t *l1d_prediction_table, //cwpeng
                                         bool &victim_valid);
+
+  ldst_inst_stats inst_stats[256] ; // cwpeng per-SM load/store instruction state table
 };
-
-
-class ldst_inst_stats{ // cwpeng
-public:
-  uint64_t access_time ;
-  uint64_t hit_time ;
-  uint64_t miss_time ;
-  uint64_t bypass_time ;
-  uint64_t not_bypass_time ;
-  uint64_t reuse_time ;
-  uint64_t no_reuse_time ;
-  uint64_t misprediction_time ;
-  uint64_t no_misprediction_time ;
-
-  double get_hit_rate(){
-    if(hit_time+miss_time==0) return 0.0 ;
-    return (double)hit_time/(double)(hit_time+miss_time) ;
-  }
-  
-  double get_bypass_rate(){
-    if(bypass_time+not_bypass_time==0) return 0.0 ;
-    return (double)bypass_time/(double)(bypass_time+not_bypass_time) ;
-  }
-
-  uint64_t get_l2_access_time(){
-    return bypass_time + not_bypass_time ;
-  }
-
-  double get_reuse_rate(){
-    if(reuse_time+no_reuse_time==0) return 0.0 ;
-    return (double)reuse_time/(double)(reuse_time+no_reuse_time) ;
-  }
-
-  double get_misprediction_rate(){
-    if(misprediction_time+no_misprediction_time==0) return 0.0 ;
-    return (double)misprediction_time/(double)(misprediction_time+no_misprediction_time) ;
-  }
-} ;
 
 /// This is meant to model the first level data cache in Fermi.
 /// It is write-evict (global) or write-back (local) at
@@ -1844,8 +1849,7 @@ class l1_cache : public data_cache {
   static uint8_t pc2hashed_pc(new_addr_type) ; // cwpeng PC -> 256bit hash PC translation
   void print_prediction_table(FILE *fp, unsigned core_id) const; // print prediction table at program end
 
-  static ldst_inst_stats inst_stats[256] ; // cwpeng load/store instruction state table
-  static void print_ldst_inst_stats(FILE *fp) ; // cwpeng print load/store instruction state table at program end
+  void print_ldst_inst_stats(FILE *fp, unsigned core_id) const; // cwpeng print load/store instruction state table per SM
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,

@@ -1860,6 +1860,9 @@ void ldst_unit::get_L1C_sub_stats(struct cache_sub_stats &css) const {
 void ldst_unit::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1T) m_L1T->get_sub_stats(css);
 }
+void ldst_unit::print_ldst_inst_stats(FILE *fp) const {
+  if (m_L1D) m_L1D->print_ldst_inst_stats(fp, m_sid);
+}
 
 // Add this function to unset depbar
 void shader_core_ctx::unset_depbar(const warp_inst_t &inst) {
@@ -4087,6 +4090,9 @@ void shader_core_ctx::get_L1C_sub_stats(struct cache_sub_stats &css) const {
 void shader_core_ctx::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   m_ldst_unit->get_L1T_sub_stats(css);
 }
+void shader_core_ctx::print_ldst_inst_stats(FILE *fp) const {
+  m_ldst_unit->print_ldst_inst_stats(fp);
+}
 
 void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
                                            long &n_mem_to_simt) const {
@@ -4870,6 +4876,11 @@ void simt_core_cluster::get_L1I_sub_stats(struct cache_sub_stats &css) const {
     total_css += temp_css;
   }
   css = total_css;
+}
+void simt_core_cluster::print_per_sm_ldst_inst_stats(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
+    m_core[i]->print_ldst_inst_stats(fp);
+  }
 }
 void simt_core_cluster::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   struct cache_sub_stats temp_css;
