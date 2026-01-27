@@ -953,6 +953,8 @@ class l2_cache_config : public cache_config {
   linear_to_raw_address_translation *m_address_mapping;
 };
 
+class ldst_inst_stats; // forward declaration
+
 class tag_array {
  public:
   // Use this constructor
