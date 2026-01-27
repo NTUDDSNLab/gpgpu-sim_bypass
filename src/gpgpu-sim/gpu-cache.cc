@@ -2262,8 +2262,10 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
     l1_cache::inst_stats[storedhashedPC].reuse_time++ ;
   }
   // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
-  if(l1d_prediction_table[storedhashedPC] > 0 && mf->get_is_representative()){ // Saturating counter stays 0 on 0
-    l1d_prediction_table[storedhashedPC]--;
+  if(l1d_prediction_table[storedhashedPC] > 0){ // Saturating counter stays 0 on 0
+    if(mf->get_is_representative()){
+      l1d_prediction_table[storedhashedPC]--;
+    }
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
   }
   // if(l1d_prediction_table[mf->get_pc()%256] > 0 ){ // Saturating counter stays 0 on 0

@@ -141,7 +141,10 @@ class mem_fetch {
 
   // 新增：设置和获取representative标志
   void set_is_representative(bool val) { m_is_representative = val; }
-  bool get_is_representative() const { return m_is_representative; }
+  bool get_is_representative() const { 
+    // return true ;
+    return m_is_representative; 
+  }
 
  private:
   // request source information
