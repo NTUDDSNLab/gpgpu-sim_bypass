@@ -678,7 +678,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   else{
     // printf("CWPENG: Do not Bypass L1D pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
   }
-  if(isBypassed){
+  if(isBypassed && mf->get_is_representative()){
     if(bypassBit){
       // printf("L2 indicate misprediction, bypassbit = 1, PC=%llx\n", mf->get_pc()); ;
       // l1d_prediction_table[hashed_pc] = threshold-1 ;
@@ -2279,7 +2279,11 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   m_tag_array->set_hashed_pc_from_tag(addr, mf, hashed_pc);  //cwpeng
   m_tag_array->set_reuse_flag_from_tag(addr, true); //cwpeng
 
-  m_tag_array->access(block_addr, time, cache_index, mf);
+  bool isBypassed = l1d_prediction_table[hashed_pc] >= 8 ; // cwpeng decide update time to LRU or MRU
+  if(!isBypassed)
+    m_tag_array->access(block_addr, time, cache_index, mf);
+  else
+    m_tag_array->access(block_addr, 0, cache_index, mf);
   // Atomics treated as global read/write requests - Perform read, mark line as
   // MODIFIED
   if (mf->isatomic()) {
