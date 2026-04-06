@@ -1090,11 +1090,14 @@ class mshr_table {
            "Change of MSHR parameters between kernels is not allowed");
   }
 
+  void set_cache_name(const std::string &name) { m_cache_name = name; }
+
  private:
   // finite sized, fully associative table, with a finite maximum number of
   // merged requests
   const unsigned m_num_entries;
   const unsigned m_max_merged;
+  std::string m_cache_name;
 
   struct mshr_entry {
     std::list<mem_fetch *> m_list;
@@ -1109,6 +1112,8 @@ class mshr_table {
   // it may take several cycles to process the merged requests
   bool m_current_response_ready;
   std::list<new_addr_type> m_current_response;
+
+  friend class baseline_cache; //cwpeng for accessing m_data and pending_lines for reuse check
 };
 
 /***************************************************************** Caches
@@ -1327,6 +1332,7 @@ class baseline_cache : public cache_t {
   void init(const char *name, const cache_config &config,
             mem_fetch_interface *memport, enum mem_fetch_status status) {
     m_name = name;
+    m_mshrs.set_cache_name(name);
     assert(config.m_mshr_type == ASSOC || config.m_mshr_type == SECTOR_ASSOC);
     m_memport = memport;
     m_miss_queue_status = status;
@@ -1483,7 +1489,7 @@ class baseline_cache : public cache_t {
                          unsigned cache_index, mem_fetch *mf, unsigned time,
                          bool &do_miss, bool &wb, evicted_block_info &evicted,
                          std::list<cache_event> &events, bool read_only,
-                         bool wa, bool isBypassed); // cwpeng
+                         bool wa, bool isBypassed, uint8_t *l1d_prediction_table); // cwpeng
 
   /// Sub-class containing all metadata for port bandwidth management
   class bandwidth_management {

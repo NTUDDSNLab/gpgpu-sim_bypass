@@ -877,6 +877,28 @@ bool mshr_table::full(new_addr_type block_addr) const {
 /// Add or merge this access
 void mshr_table::add(new_addr_type block_addr, mem_fetch *mf) {
   m_data[block_addr].m_list.push_back(mf);
+  
+  // 只針對名稱中包含 "L1D" 的 Cache 印出 Debug 訊息
+  // if (m_cache_name.find("L1D") != std::string::npos) {
+  //   if(m_data[block_addr].m_list.size() > 1){
+  //     mem_fetch *first_mf = m_data[block_addr].m_list.front();
+
+  //     if(first_mf->get_is_representative() && mf->get_is_representative()){
+  //       address_type pc1 = first_mf->get_pc();
+  //       if (pc1 == (address_type)-1 && first_mf->get_original_mf()) pc1 = first_mf->get_original_mf()->get_pc();
+  //       address_type pc2 = mf->get_pc();
+  //       if (pc2 == (address_type)-1 && mf->get_original_mf()) pc2 = mf->get_original_mf()->get_pc();
+  //       // int hash1 = (pc1 == (address_type)-1) ? -1 : l1_cache::pc2hashed_pc(pc1);
+  //       // int hash2 = (pc2 == (address_type)-1) ? -1 : l1_cache::pc2hashed_pc(pc2);
+  //       int hash1 = l1_cache::pc2hashed_pc(pc1);
+  //       int hash2 = l1_cache::pc2hashed_pc(pc2);
+  //       printf("MSHR (%s): merging request for block_addr 0x%06llx, total merged requests %zu, first hashPC:%d, second hashPC:%d\n", m_cache_name.c_str(), block_addr, m_data[block_addr].m_list.size(), hash1, hash2);
+
+  //     }
+
+  //   }
+  // }
+
   assert(m_data.size() <= m_num_entries);
   assert(m_data[block_addr].m_list.size() <= m_max_merged);
   // indicate that this MSHR entry contains an atomic operation
@@ -1614,10 +1636,24 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time, uint8_t *l1d_prediction_
   assert(e->second.m_valid);
   mf->set_data_size(e->second.m_data_size);
   mf->set_addr(e->second.m_addr);
+
+  // 攔截：從 MSHR 中找出最後一個積壓的 mf，提取出它真正的 PC hash
+  uint8_t last_merged_hashed_pc = hashed_pc;
+  if (!m_mshrs.m_data[e->second.m_block_addr].m_list.empty()) {
+    mem_fetch *last_mf = m_mshrs.m_data[e->second.m_block_addr].m_list.back();
+    address_type pc = last_mf->get_pc();
+    if (pc == (address_type)-1 && last_mf->get_original_mf()) {
+      pc = last_mf->get_original_mf()->get_pc();
+    }
+    if (pc != (address_type)-1) {
+      last_merged_hashed_pc = l1_cache::pc2hashed_pc(pc);
+    }
+  }
+
   if (m_config.m_alloc_policy == ON_MISS)
     m_tag_array->fill(e->second.m_cache_index, time, mf);
   else if (m_config.m_alloc_policy == ON_FILL) {
-    m_tag_array->fill(e->second.m_block_addr, time, mf, mf->is_write(), l1d_prediction_table, hashed_pc, inst_stats); //cwpeng
+    m_tag_array->fill(e->second.m_block_addr, time, mf, mf->is_write(), l1d_prediction_table, last_merged_hashed_pc, inst_stats); //cwpeng
   } else
     abort();
   bool has_atomic = false;
@@ -1767,7 +1803,9 @@ void baseline_cache::send_read_request(new_addr_type addr,
                                        evicted_block_info &evicted,
                                        std::list<cache_event> &events,
                                        bool read_only, bool wa,
-                                       bool isBypassed) {//cwpeng
+                                       bool isBypassed,
+                                       uint8_t *l1d_prediction_table
+                                      ) {//cwpeng
   new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
@@ -1777,9 +1815,28 @@ void baseline_cache::send_read_request(new_addr_type addr,
     else
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
+    // 修正1：MSHR 的 key 必須是 mshr_addr，並且 C++ list 取得結尾要用 back()
+    mem_fetch *mshr_hit_source_mf = m_mshrs.m_data[mshr_addr].m_list.back();
+
+    if(mshr_hit_source_mf->get_is_representative() && mf->get_is_representative()){
+      address_type mshr_hit_source_pc = mshr_hit_source_mf->get_pc();
+      // 防呆：如果取不到 PC，試著從 original_mf 拿
+      if (mshr_hit_source_pc == (address_type)-1 && mshr_hit_source_mf->get_original_mf()) {
+        mshr_hit_source_pc = mshr_hit_source_mf->get_original_mf()->get_pc();
+      }
+      
+      if (mshr_hit_source_pc != (address_type)-1) {
+        uint8_t hash1 = l1_cache::pc2hashed_pc(mshr_hit_source_pc);
+        if(l1d_prediction_table[hash1] > 0){
+          l1d_prediction_table[hash1]-- ;
+        }
+      }
+    }
+
     m_mshrs.add(mshr_addr, mf);
     m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
     do_miss = true;
+  
 
   } else if (!mshr_hit && mshr_avail &&
              (m_miss_queue.size() < m_config.m_miss_queue_size)) {
@@ -2367,7 +2424,7 @@ enum cache_request_status data_cache::rd_miss_base_l1d(
   bool wb = false;
   evicted_block_info evicted;
   send_read_request(addr, block_addr, cache_index, mf, time, do_miss, wb,
-                    evicted, events, false, false, isBypassed); //cwpeng
+                    evicted, events, false, false, isBypassed, l1d_prediction_table); //cwpeng
 
   if (do_miss) {
     // If evicted block is modified and not a write-through

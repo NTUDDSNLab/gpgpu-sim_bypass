@@ -146,6 +146,12 @@ class mem_fetch {
     return m_is_representative; 
   }
 
+  // cwpeng: MSHR hit related functions
+  // bool get_mshr_hit() const { return m_mshr_hit; }
+  // mem_fetch* get_mshr_hit_mf() const { return m_mshr_hit_mf; }
+  // void set_mshr_hit(bool hit) { m_mshr_hit = hit; }
+  // void set_mshr_hit_mf(mem_fetch* mf) { m_mshr_hit_mf = mf; }
+
  private:
   // request source information
   unsigned m_request_uid;
@@ -188,19 +194,22 @@ class mem_fetch {
   const memory_config *m_mem_config;
   unsigned icnt_flit_size;
 
+  
+  mem_fetch
+  *original_mf;  // this pointer is set up when a request is divided into
+  // sector requests at L2 cache (if the req size > L2 sector
+  // size), so the pointer refers to the original request
+  mem_fetch *original_wr_mf;  // this pointer refers to the original write req,
+  // when fetch-on-write policy is used
+  
   bool m_isBypassed; // cwpeng bypass flag
   bool m_L1toL2 ; // cwpeng memory fetch L1 to L2 flag
   bool m_bypassBit ; // cwpeng bypass bit from L2
-
-  mem_fetch
-      *original_mf;  // this pointer is set up when a request is divided into
-                     // sector requests at L2 cache (if the req size > L2 sector
-                     // size), so the pointer refers to the original request
-  mem_fetch *original_wr_mf;  // this pointer refers to the original write req,
-                              // when fetch-on-write policy is used
-
   // 新增：标记这个mf是否代表整个warp_inst进行prediction更新
   bool m_is_representative = false ;  // 默认false，只有包含thread 0的mf为true
+
+  // bool m_mshr_hit = false ; // cwpeng: indicate this mf hits by other mf in MSHR
+  // mem_fetch* m_mshr_hit_mf = nullptr ; // cwpeng: if m_mshr_hit is true, this pointer points to the latest mf hit in MSHR
 };
 
 #endif
