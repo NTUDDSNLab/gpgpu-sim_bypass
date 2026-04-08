@@ -139,6 +139,7 @@ class shd_warp_t {
       m_ldgdepbar_buf[i].clear();
     }
     m_ldgdepbar_buf.clear();
+    m_high_reuse_priority = false;
   }
   void init(address_type start_pc, unsigned cta_id, unsigned wid,
             const std::bitset<MAX_WARP_SIZE> &active, unsigned dynamic_warp_id,
@@ -171,6 +172,7 @@ class shd_warp_t {
       m_ldgdepbar_buf[i].clear();
     }
     m_ldgdepbar_buf.clear();
+    m_high_reuse_priority = false;
   }
 
   bool functional_done() const;
@@ -331,6 +333,9 @@ class shd_warp_t {
   unsigned int m_depbar_group;
   bool m_waiting_ldgsts;  // Ni: Whether the warp is waiting for the LDGSTS
                           // instrs to finish
+
+ public:
+  bool m_high_reuse_priority; // cwpeng: custom priority flag for reuse-aware scheduling
 };
 
 inline unsigned hw_tid_from_wid(unsigned wid, unsigned warp_size, unsigned i) {
@@ -442,6 +447,7 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
       unsigned num_warps_to_add, OrderingType age_ordering,
       bool (*priority_func)(U lhs, U rhs));
   static bool sort_warps_by_oldest_dynamic_id(shd_warp_t *lhs, shd_warp_t *rhs);
+  static bool sort_warps_by_custom_priority(shd_warp_t *lhs, shd_warp_t *rhs);
 
   // Derived classes can override this function to populate
   // m_supervised_warps with their scheduling policies
@@ -1407,6 +1413,9 @@ class ldst_unit : public pipelined_simd_unit {
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
   void get_L1T_sub_stats(struct cache_sub_stats &css) const;
   void print_ldst_inst_stats(FILE *fp) const; // cwpeng per-SM ldst inst stats
+
+  // cwpeng: expose L1D cache for scheduler to read prediction table
+  l1_cache* get_L1D() { return m_L1D; }
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,

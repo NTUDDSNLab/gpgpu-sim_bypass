@@ -1355,6 +1355,24 @@ void scheduler_unit::cycle() {
                 issued_inst = true;
                 warp_inst_issued = true;
                 previous_issued_inst_exec_type = exec_unit_type_t::MEM;
+
+                // cwpeng: Adaptive cache bypassing warp scheduling
+                if (pI->is_load() || pI->is_store()) {
+                  // 1. Any load or store clears the flag (consumes the priority)
+                  warp(warp_id).m_high_reuse_priority = false;
+                  
+                  // 2. Only load instruction can pull up the flag if predicted to reuse
+                  if (pI->is_load() && m_shader && m_shader->m_ldst_unit) {
+                    l1_cache* l1d = m_shader->m_ldst_unit->get_L1D();
+                    if (l1d) {
+                      uint8_t hashed_pc = l1_cache::pc2hashed_pc(pI->pc);
+                      int threshold = 8; // SDBP threshold
+                      if (l1d->prediction_table[hashed_pc] < threshold) {
+                        warp(warp_id).m_high_reuse_priority = true;
+                      }
+                    }
+                  }
+                }
               }
             } else {
               // This code need to be refactored
@@ -1588,6 +1606,26 @@ bool scheduler_unit::sort_warps_by_oldest_dynamic_id(shd_warp_t *lhs,
   }
 }
 
+bool scheduler_unit::sort_warps_by_custom_priority(shd_warp_t *lhs,
+                                                   shd_warp_t *rhs) {
+  if (rhs && lhs) {
+    if (lhs->done_exit() || lhs->waiting()) {
+      return false;
+    } else if (rhs->done_exit() || rhs->waiting()) {
+      return true;
+    } else {
+      // cwpeng: check reuse priority flag first
+      if (lhs->m_high_reuse_priority && !rhs->m_high_reuse_priority) return true;
+      if (!lhs->m_high_reuse_priority && rhs->m_high_reuse_priority) return false;
+      
+      // fallback to GTO oldest first
+      return lhs->get_dynamic_warp_id() < rhs->get_dynamic_warp_id();
+    }
+  } else {
+    return lhs < rhs;
+  }
+}
+
 void lrr_scheduler::order_warps() {
   order_lrr(m_next_cycle_prioritized_warps, m_supervised_warps,
             m_last_supervised_issued, m_supervised_warps.size());
@@ -1601,7 +1639,8 @@ void gto_scheduler::order_warps() {
   order_by_priority(m_next_cycle_prioritized_warps, m_supervised_warps,
                     m_last_supervised_issued, m_supervised_warps.size(),
                     ORDERING_GREEDY_THEN_PRIORITY_FUNC,
-                    scheduler_unit::sort_warps_by_oldest_dynamic_id);
+                    // scheduler_unit::sort_warps_by_oldest_dynamic_id);
+                    scheduler_unit::sort_warps_by_custom_priority); // cwpeng tried to prioritize load reuse warp
 }
 
 void oldest_scheduler::order_warps() {
