@@ -509,6 +509,37 @@ void tag_array::set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool 
   }
 }
 
+uint8_t tag_array::get_warp_id_from_tag(new_addr_type addr, mem_fetch *mf){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      return line->m_warp_id;
+    }
+  }
+  // This should not happen on a hit. Return a default value.
+  return 0;
+}
+
+void tag_array::set_warp_id_from_tag(new_addr_type addr, mem_fetch *mf, uint8_t warp_id){
+  unsigned set_index = m_config.set_index(addr);
+  new_addr_type tag = m_config.tag(addr);
+
+  // check for line in cache and update on HIT access with most recent warp id.
+  for (unsigned way = 0; way < m_config.m_assoc; way++) {
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      line->m_warp_id = warp_id;
+    }
+  }
+}
+
+
 bool tag_array::get_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf){
   unsigned set_index = m_config.set_index(addr);
   new_addr_type tag = m_config.tag(addr);
@@ -673,6 +704,40 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
   // }
   if(l1d_prediction_table[hashed_pc] >= threshold){
     // printf("CWPENG: Bypass L1D due to high miss rate prediction pc:%u, pred:%u\n", hashed_pc, l1d_prediction_table[hashed_pc]);
+    double prob_bypass ;
+    // switch(l1d_prediction_table[hashed_pc]){
+    //   case 8:
+    //     prob_bypass = 0.5 ;
+    //     break;
+    //   case 9:
+    //     prob_bypass = 0.6 ;
+    //     break;
+    //   case 10:
+    //     prob_bypass = 0.7 ;
+    //     break;
+    //   case 11:
+    //     prob_bypass = 0.8 ;
+    //     break;
+    //   case 12:
+    //     prob_bypass = 0.85 ;
+    //     break;
+    //   case 13:
+    //     prob_bypass = 0.9 ;
+    //     break;
+    //   case 14:
+    //       prob_bypass = 0.95 ;
+    //       break;
+    //   case 15:
+    //     prob_bypass = 0.99 ;
+    //     break;
+    // }
+
+    // double random_value = (double)rand() / (double)RAND_MAX; // Generate a random value between 0 and 1
+
+    // if(random_value < prob_bypass){
+    //   isBypassed = true ;
+    // }
+    
     isBypassed = true;
   }
   else{
@@ -742,6 +807,7 @@ void tag_array::fill(new_addr_type addr, unsigned time, //on-fill
     }
     set_hashed_pc_from_tag(addr, 0, hashed_pc) ;
     set_reuse_flag_from_tag(addr, false) ;
+    set_warp_id_from_tag(addr, 0, mf->get_wid()); //cwpeng
   }
 }
 
@@ -1828,6 +1894,10 @@ void baseline_cache::send_read_request(new_addr_type addr,
       if (mshr_hit_source_pc != (address_type)-1) {
         uint8_t hash1 = l1_cache::pc2hashed_pc(mshr_hit_source_pc);
         if(l1d_prediction_table[hash1] > 0){
+        //   if(l1d_prediction_table[hash1] > 4)
+        //     l1d_prediction_table[hash1] -= 4 ; // cwpeng tried to make model not to bypass
+        //   else
+        //     l1d_prediction_table[hash1] = 0 ;
           l1d_prediction_table[hash1]-- ;
         }
       }
@@ -2311,7 +2381,7 @@ enum cache_request_status data_cache::rd_hit_base(
 enum cache_request_status data_cache::rd_hit_base_l1d(
     new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
     std::list<cache_event> &events, enum cache_request_status status,
-    uint8_t* l1d_prediction_table //cwpeng  
+    uint8_t* l1d_prediction_table, ldst_inst_stats *inst_stats //cwpeng  
   ) {
   new_addr_type block_addr = m_config.block_addr(addr);
 
@@ -2320,9 +2390,21 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   if(!reuse_flag){
     inst_stats[storedhashedPC].reuse_time++ ;
   }
+
+  uint8_t warp_id_from_tag = m_tag_array->get_warp_id_from_tag(addr, mf); // cwpeng figure out if this is the same warp or not
+  if (warp_id_from_tag == mf->get_wid()) {
+    inst_stats[storedhashedPC].same_warp_reuse_time++;
+  } else {
+    inst_stats[storedhashedPC].diff_warp_reuse_time++;
+  }
+  
   // printf("HashPC: %d %d\n", storedhashedPC, mf->get_pc()); ;
   if(l1d_prediction_table[storedhashedPC] > 0){ // Saturating counter stays 0 on 0
     if(mf->get_is_representative()){
+      // if(l1d_prediction_table[storedhashedPC] > 4)
+      //   l1d_prediction_table[storedhashedPC] -= 4 ; // cwpeng tried to make model not to bypass
+      // else
+      //   l1d_prediction_table[storedhashedPC] = 0 ;
       l1d_prediction_table[storedhashedPC]--;
     }
     //fprintf(stdout,"HIT Time: %d PC: %d Value: %d\n", time, storedhashedPC, l1d_prediction_table[storedhashedPC]);
@@ -2335,12 +2417,17 @@ enum cache_request_status data_cache::rd_hit_base_l1d(
   // printf("CWPENG: PC:%d hit, update table[%d] to %d, ptr:%p\n", hashed_pc, storedhashedPC, l1d_prediction_table[storedhashedPC], l1d_prediction_table) ;
   m_tag_array->set_hashed_pc_from_tag(addr, mf, hashed_pc);  //cwpeng
   m_tag_array->set_reuse_flag_from_tag(addr, true); //cwpeng
+  m_tag_array->set_warp_id_from_tag(addr, mf, mf->get_wid()); //cwpeng
 
   bool isBypassed = l1d_prediction_table[hashed_pc] >= 8 ; // cwpeng decide update time to LRU or MRU
-  if(!isBypassed)
+  if(!isBypassed){
     m_tag_array->access(block_addr, time, cache_index, mf);
-  else
+    inst_stats[hashed_pc].hit_not_bypass_time++ ;
+  }
+  else{
     m_tag_array->access(block_addr, 0, cache_index, mf);
+    inst_stats[hashed_pc].hit_bypass_time++ ;
+  }
   // Atomics treated as global read/write requests - Perform read, mark line as
   // MODIFIED
   if (mf->isatomic()) {
@@ -2401,7 +2488,7 @@ enum cache_request_status data_cache::rd_miss_base(
 enum cache_request_status data_cache::rd_miss_base_l1d(
     new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
     std::list<cache_event> &events, enum cache_request_status status,
-    uint8_t *l1d_prediction_table, bool &victim_valid) { //cwpeng
+    uint8_t *l1d_prediction_table, bool &victim_valid, ldst_inst_stats *inst_stats) { //cwpeng
   if (miss_queue_full(1)) {
     // cannot handle request this cycle
     // (might need to generate two requests)
@@ -2572,7 +2659,7 @@ enum cache_request_status data_cache::process_tag_probe(
     if (probe_status == HIT) {
       // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++ ;
       access_status =
-          (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table);
+          (this->*m_rd_hit_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, inst_stats);
     } else if (probe_status != RESERVATION_FAIL) {
       if (probe_status == MISS || probe_status == SECTOR_MISS) {
         // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].miss_time++;
@@ -2584,7 +2671,7 @@ enum cache_request_status data_cache::process_tag_probe(
         // inst_stats[l1_cache::pc2hashed_pc(mf->get_pc())].hit_time++;
       }
       access_status =
-          (this->*m_rd_miss_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, victim_valid);
+          (this->*m_rd_miss_l1d)(addr, cache_index, mf, time, events, probe_status, l1d_prediction_table, victim_valid, inst_stats);
     } else {
       // the only reason for reservation fail here is LINE_ALLOC_FAIL (i.e all
       // lines are reserved)
@@ -2635,6 +2722,15 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   bool victim_valid = false; // cwpeng init victim_valid
   enum cache_request_status probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), victim_valid, true);
+
+  // cwpeng: check MSHR for HIT_RESERVED when ON_FILL is used
+  if (probe_status == MISS || probe_status == SECTOR_MISS) {
+    new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+    if (m_mshrs.probe(mshr_addr)) {
+      probe_status = HIT_RESERVED;
+    }
+  }
+
   enum cache_request_status access_status =
       process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events, l1d_prediction_table, victim_valid); //cwpeng
 
@@ -2726,7 +2822,7 @@ void l1_cache::print_ldst_inst_stats(FILE *fp, unsigned core_id) const {
   fprintf(fp, "L1D Prediction Table Stats (Core %u):\n", core_id);
   for(unsigned i = 0; i < 256; i++){
     if(inst_stats[i].access_time == 0 && inst_stats[i].get_l2_access_time() == 0) continue; // skip empty entries
-    fprintf(fp, "Core:%3u HashPC:%3d: access time %8lu, hit_rate:%1.5f, L2 access time:%7lu, bypass_rate:%1.5f, occupy_l1_count:%8lu, reuse_rate:%1.5f, mispredict_rate:%1.5f\n",
+    fprintf(fp, "Core:%3u HashPC:%3d: access time %8lu, hit_rate:%1.5f, L2 access time:%7lu, bypass_rate:%1.5f, occupy_l1_count:%8lu, reuse_rate:%1.5f, mispredict_rate:%1.5f, hit_bypass_rate:%1.5f, same_warp_reuse:%8lu, diff_warp_reuse:%8lu, same_warp_reuse_rate:%1.5f\n",
       core_id,
       i,
       inst_stats[i].access_time,
@@ -2735,7 +2831,11 @@ void l1_cache::print_ldst_inst_stats(FILE *fp, unsigned core_id) const {
       inst_stats[i].get_bypass_rate(),
       inst_stats[i].no_reuse_time + inst_stats[i].reuse_time,
       inst_stats[i].get_reuse_rate(),
-      inst_stats[i].get_misprediction_rate()
+      inst_stats[i].get_misprediction_rate(),
+      inst_stats[i].get_hit_bypass_rate(),
+      inst_stats[i].same_warp_reuse_time,
+      inst_stats[i].diff_warp_reuse_time,
+      inst_stats[i].get_same_warp_reuse_rate()
     );
   }
   fprintf(fp, "========================================================================\n");

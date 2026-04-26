@@ -126,6 +126,7 @@ struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
     m_block_addr = 0;
+    m_warp_id = 0; // cwpeng initialize warp id
     m_hashed_pc = 0 ; // cwpeng initialize hashed PC in L1
     reuse_flag = false ; // cwpeng initialize reuse flag for hashed PC
     m_bypassBit = false ; // cwpeng initialize bypass bit in L2
@@ -172,6 +173,7 @@ struct cache_block_t {
   new_addr_type m_block_addr;
 
   uint8_t m_hashed_pc; // cwpeng hashed PC in memory block (8 bits)
+  uint8_t m_warp_id; // cwpeng warp id in memory block (6 bits)
   bool reuse_flag ; // cwpeng reuse flag for hashed PC
   bool m_bypassBit; // cwpeng cs752 L2 Bypass Bit
 };
@@ -188,6 +190,7 @@ struct line_cache_block : public cache_block_t {
     m_readable = true;
 
     m_hashed_pc = 0 ;  // cwpeng initialize hashed PC
+    m_warp_id = 0; // cwpeng initialize warp id
                   // record the last PC that access this block
   }
   void allocate(new_addr_type tag, new_addr_type block_addr, unsigned time,
@@ -1012,6 +1015,8 @@ class tag_array {
 
   uint8_t get_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf); //cwpeng
   void set_hashed_pc_from_tag(new_addr_type addr,  mem_fetch *mf, uint8_t hashed_pc);
+  uint8_t get_warp_id_from_tag(new_addr_type addr, mem_fetch *mf); //cwpeng
+  void set_warp_id_from_tag(new_addr_type addr, mem_fetch *mf, uint8_t warp_id); //cwpeng
   bool get_reuse_flag_from_tag(new_addr_type addr); //cwpeng
   void set_reuse_flag_from_tag(new_addr_type addr, bool reuse);
   void set_bypass_bit_from_tag(new_addr_type addr, mem_fetch *mf, bool bypassBit);
@@ -1561,10 +1566,15 @@ public:
   uint64_t no_reuse_time ;
   uint64_t misprediction_time ;
   uint64_t no_misprediction_time ;
+  uint64_t hit_bypass_time ;
+  uint64_t hit_not_bypass_time ;
+  uint64_t same_warp_reuse_time ; // cwpeng
+  uint64_t diff_warp_reuse_time ; // cwpeng
 
   ldst_inst_stats() : access_time(0), hit_time(0), miss_time(0),
     bypass_time(0), not_bypass_time(0), reuse_time(0), no_reuse_time(0),
-    misprediction_time(0), no_misprediction_time(0) {}
+    misprediction_time(0), no_misprediction_time(0), hit_bypass_time(0),
+    hit_not_bypass_time(0), same_warp_reuse_time(0), diff_warp_reuse_time(0) {}
 
   double get_hit_rate() const {
     if(hit_time+miss_time==0) return 0.0 ;
@@ -1588,6 +1598,16 @@ public:
   double get_misprediction_rate() const {
     if(misprediction_time+no_misprediction_time==0) return 0.0 ;
     return (double)misprediction_time/(double)(misprediction_time+no_misprediction_time) ;
+  }
+
+  double get_hit_bypass_rate() const {
+    if(hit_bypass_time+hit_not_bypass_time==0) return 0.0 ;
+    return (double)hit_bypass_time/(double)(hit_bypass_time+hit_not_bypass_time) ;
+  }
+
+  double get_same_warp_reuse_rate() const {
+    if(same_warp_reuse_time + diff_warp_reuse_time == 0) return 0.0;
+    return (double)same_warp_reuse_time / (double)(same_warp_reuse_time + diff_warp_reuse_time);
   }
 } ;
 
@@ -1786,7 +1806,7 @@ class data_cache : public baseline_cache {
       std::list<cache_event> &events, enum cache_request_status status);
   enum cache_request_status (data_cache::*m_rd_hit_l1d)( //cwpeng
       new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
-      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table);
+      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table, ldst_inst_stats *inst_stats);
   enum cache_request_status rd_hit_base(new_addr_type addr,
                                         unsigned cache_index, mem_fetch *mf,
                                         unsigned time,
@@ -1798,7 +1818,7 @@ class data_cache : public baseline_cache {
                                         unsigned time,
                                         std::list<cache_event> &events,
                                         enum cache_request_status status,
-                                        uint8_t* l1_prediction_table // cwpeng
+                                        uint8_t* l1_prediction_table, ldst_inst_stats *inst_stats // cwpeng
                                         );
 
   /******* Read-miss configs *******/
@@ -1813,14 +1833,14 @@ class data_cache : public baseline_cache {
 
   enum cache_request_status (data_cache::*m_rd_miss_l1d)(
       new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
-      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table, bool &victim_valid); // cwpeng
+      std::list<cache_event> &events, enum cache_request_status status, uint8_t *l1d_prediction_table, bool &victim_valid, ldst_inst_stats *inst_stats); // cwpeng
   enum cache_request_status rd_miss_base_l1d(new_addr_type addr,
                                          unsigned cache_index, mem_fetch *mf,
                                          unsigned time,
                                          std::list<cache_event> &events,
                                          enum cache_request_status status,
                                         uint8_t *l1d_prediction_table, //cwpeng
-                                        bool &victim_valid);
+                                        bool &victim_valid, ldst_inst_stats *inst_stats);
 
   ldst_inst_stats inst_stats[256] ; // cwpeng per-SM load/store instruction state table
 };

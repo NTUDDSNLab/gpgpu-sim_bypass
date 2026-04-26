@@ -1169,18 +1169,18 @@ void scheduler_unit::order_lrr(
     std::vector<T> &result_list, const typename std::vector<T> &input_list,
     const typename std::vector<T>::const_iterator &last_issued_from_input,
     unsigned num_warps_to_add) {
-  assert(num_warps_to_add <= input_list.size());
-  result_list.clear();
-  typename std::vector<T>::const_iterator iter =
-      (last_issued_from_input == input_list.end()) ? input_list.begin()
-                                                   : last_issued_from_input + 1;
+    assert(num_warps_to_add <= input_list.size());
+    result_list.clear();
+    typename std::vector<T>::const_iterator iter =
+        (last_issued_from_input == input_list.end()) ? input_list.begin()
+                                                    : last_issued_from_input + 1;
 
-  for (unsigned count = 0; count < num_warps_to_add; ++iter, ++count) {
-    if (iter == input_list.end()) {
-      iter = input_list.begin();
+    for (unsigned count = 0; count < num_warps_to_add; ++iter, ++count) {
+      if (iter == input_list.end()) {
+        iter = input_list.begin();
+      }
+      result_list.push_back(*iter);
     }
-    result_list.push_back(*iter);
-  }
 }
 
 template <class T>
@@ -1366,7 +1366,7 @@ void scheduler_unit::cycle() {
                     l1_cache* l1d = m_shader->m_ldst_unit->get_L1D();
                     if (l1d) {
                       uint8_t hashed_pc = l1_cache::pc2hashed_pc(pI->pc);
-                      int threshold = 8; // SDBP threshold
+                      int threshold = 8; // warp scheduler threshold for high reuse priority, can be tuned
                       if (l1d->prediction_table[hashed_pc] < threshold) {
                         warp(warp_id).m_high_reuse_priority = true;
                       }
@@ -1627,9 +1627,30 @@ bool scheduler_unit::sort_warps_by_custom_priority(shd_warp_t *lhs,
 }
 
 void lrr_scheduler::order_warps() {
-  order_lrr(m_next_cycle_prioritized_warps, m_supervised_warps,
+  // order_lrr(m_next_cycle_prioritized_warps, m_supervised_warps,
+  //           m_last_supervised_issued, m_supervised_warps.size());
+  // 1. 先用原本的邏輯，產生一個標準的 LRR 輪詢名單
+  std::vector<shd_warp_t *> temp_lrr_list;
+  order_lrr(temp_lrr_list, m_supervised_warps,
             m_last_supervised_issued, m_supervised_warps.size());
+
+  m_next_cycle_prioritized_warps.clear();
+
+  // 2. 第一次掃描：優先排入有 high_reuse_priority 的 Warp (維持 LRR 相對順序)
+  for (unsigned i = 0; i < temp_lrr_list.size(); ++i) {
+    if (temp_lrr_list[i] && temp_lrr_list[i]->m_high_reuse_priority) {
+      m_next_cycle_prioritized_warps.push_back(temp_lrr_list[i]);
+    }
+  }
+
+  // 3. 第二次掃描：將剩下沒有 flag 的 Warp 排入後方 (維持 LRR 相對順序)
+  for (unsigned i = 0; i < temp_lrr_list.size(); ++i) {
+    if (!temp_lrr_list[i] || !temp_lrr_list[i]->m_high_reuse_priority) {
+      m_next_cycle_prioritized_warps.push_back(temp_lrr_list[i]);
+    }
+  }
 }
+
 void rrr_scheduler::order_warps() {
   order_rrr(m_next_cycle_prioritized_warps, m_supervised_warps,
             m_last_supervised_issued, m_supervised_warps.size());
@@ -1900,7 +1921,10 @@ void ldst_unit::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1T) m_L1T->get_sub_stats(css);
 }
 void ldst_unit::print_ldst_inst_stats(FILE *fp) const {
-  if (m_L1D) m_L1D->print_ldst_inst_stats(fp, m_sid);
+  if (m_L1D){
+    m_L1D->print_ldst_inst_stats(fp, m_sid);
+    m_L1D->print_prediction_table(fp, m_sid);
+  }
 }
 
 // Add this function to unset depbar
