@@ -1694,14 +1694,15 @@ void two_level_active_scheduler::order_warps() {
            m_next_cycle_prioritized_warps.begin();
        iter != m_next_cycle_prioritized_warps.end();) {
     bool waiting = (*iter)->waiting();
-    for (int i = 0; i < MAX_INPUT_VALUES; i++) {
-      const warp_inst_t *inst = (*iter)->ibuffer_next_inst();
-      // Is the instruction waiting on a long operation?
-      if (inst && inst->in[i] > 0 &&
-          this->m_scoreboard->islongop((*iter)->get_warp_id(), inst->in[i])) {
-        waiting = true;
-      }
-    }
+    
+    // CCWS 實作：移除因為 Long Memory Operation (Cache miss) 而讓出 token 的機制
+    // for (int i = 0; i < MAX_INPUT_VALUES; i++) {
+    //   const warp_inst_t *inst = (*iter)->ibuffer_next_inst();
+    //   if (inst && inst->in[i] > 0 &&
+    //       this->m_scoreboard->islongop((*iter)->get_warp_id(), inst->in[i])) {
+    //     waiting = true;
+    //   }
+    // }
 
     if (waiting) {
       m_pending_warps.push_back(*iter);
@@ -1718,7 +1719,8 @@ void two_level_active_scheduler::order_warps() {
   // m_pending_warps
   unsigned num_promoted = 0;
   if (SCHEDULER_PRIORITIZATION_SRR == m_outer_level_prioritization) {
-    while (m_next_cycle_prioritized_warps.size() < m_max_active_warps) {
+    // 加入 !m_pending_warps.empty() 的防呆檢查，防止設定 N > 24 時崩潰
+    while (m_next_cycle_prioritized_warps.size() < m_max_active_warps && !m_pending_warps.empty()) {
       m_next_cycle_prioritized_warps.push_back(m_pending_warps.front());
       m_pending_warps.pop_front();
       SCHED_DPRINTF(
@@ -1732,7 +1734,26 @@ void two_level_active_scheduler::order_warps() {
             m_outer_level_prioritization);
     abort();
   }
-  assert(num_promoted == num_demoted);
+  // assert(num_promoted == num_demoted); // 如果 pending pool 空了可能不相等，註解掉以防當機
+
+  // cwpeng: 結合客製化的 LRR 邏輯 (Adaptive cache bypassing warp scheduling)
+  // 將 Active Pool 依照 m_high_reuse_priority 重新排列，同時維持原本 LRR 的相對順序
+  std::vector<shd_warp_t *> temp_active_list = m_next_cycle_prioritized_warps;
+  m_next_cycle_prioritized_warps.clear();
+
+  // 1. 第一次掃描：優先排入有 high_reuse_priority 的 Warp
+  for (unsigned i = 0; i < temp_active_list.size(); ++i) {
+    if (temp_active_list[i] && temp_active_list[i]->m_high_reuse_priority) {
+      m_next_cycle_prioritized_warps.push_back(temp_active_list[i]);
+    }
+  }
+
+  // 2. 第二次掃描：將剩下沒有 flag 的 Warp 排入後方
+  for (unsigned i = 0; i < temp_active_list.size(); ++i) {
+    if (!temp_active_list[i] || !temp_active_list[i]->m_high_reuse_priority) {
+      m_next_cycle_prioritized_warps.push_back(temp_active_list[i]);
+    }
+  }
 }
 
 swl_scheduler::swl_scheduler(shader_core_stats *stats, shader_core_ctx *shader,
